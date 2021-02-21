@@ -1,0 +1,45 @@
+#!/bin/sh
+# =============================== Program paths. ===============================
+# ==============================================================================
+CD_PROG="cd"			# Use builtin cd.
+ECHO_PROG="echo"		# Use builtin echo.
+ASSEMBLER_PROG="/usr/local/bin/avra"
+MV_PROG="/bin/mv"
+
+
+# ============================== GLOBAL CONSTANTS. =============================
+# ==============================================================================
+# We found some info about the colour codes here:
+# https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+NO_COLOR='\033[0m'
+RED='\033[0;31m'		# Indicates bad things :'(
+GREEN='\033[0;32m'		# Indicates all is well in the world :)
+
+
+build()
+{
+    BUILD_FILES_TARGET_DIR="../built"
+    $ECHO_PROG -e "${GREEN}================================ Assembling code. ==\
+============================${NO_COLOR}"
+    $ASSEMBLER_PROG *.asm
+    $ECHO_PROG -e "${GREEN}========================== Finished assembling code\
+. ===========================${NO_COLOR}"
+    $ECHO_PROG -e "${GREEN}==== Moving assembler output files from src to \
+${BUILD_FILES_TARGET_DIR} (relative to ./src). ===${NO_COLOR}"
+    $MV_PROG *.hex *.obj $BUILD_FILES_TARGET_DIR
+    $ECHO_PROG -e "${GREEN}============================= Finished moving \
+files. ===========================${NO_COLOR}"
+
+    
+}
+
+
+main()
+{
+    $CD_PROG ./src	        # Move to source director.
+    build
+    $CD_PROG ../	        # Return to previous directory.
+}
+
+
+main				# Call main.
