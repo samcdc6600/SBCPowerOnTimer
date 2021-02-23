@@ -10,19 +10,19 @@
 	.include "./include/m16Adef.inc" 
 
 
-
 	;; =====================================================================
 	;; ============================ Definitions ============================
+	;; The assembler won't automatically place a null byte after strings.
+	;; It may place one as padding however.
 
 	;; =====================================================================
 	;; ============================= Constants =============================
-	.equ	DDRportC = 0b11111111
-	.equ	DDRportA = 0b11111111
+	.equ	setDDRToAllOutputs = 0b11111111
 	;; ======================= LCD Related Constants =======================
-	;; == Display control siginals E (enable), RW (read write), RS (register select) ==
-	.equ	Enable		  = 0b00100000
-	.equ	ReadWrite	  = 0b01000000
-	.equ	RegisterSelect	  = 0b10000000
+	;; == Display control siginals E (enable), RW (read write), RS (register select.) ==
+	.equ	enable		  = 0b00100000
+	.equ	readWrite	  = 0b01000000
+	.equ	registerSelect	  = 0b10000000
 	;; == Display commands (the position of the first 1 indicates the command.) ==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.equ	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
@@ -54,46 +54,72 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
+	helloStr:	.db "- Hello Girls! -", 0
 	;; =====================================================================
 	;; ========================= Main Code Section =========================
 MAIN:
+	ldi	r30, low(2*helloStr)
+	ldi	r31, high(2*helloStr)
+	
+	call	WRITE_TO_LCD
 START_OF_MAIN:
+	;; call	CLEAR_LCD
+	rjmp	START_OF_MAIN
+	
 
-	rjmp START_OF_MAIN
+
+	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
+	;; X Y and Z registers are actually pairs of r27:r26, r29:r28 and
+	;; r31:r30 registers. Each of them can be used as indirect pointers to SRAM:
+	;; ld r16, X
+	;;
+	;; with post-increment, or pre-decrement:
+	;; ld r16, -Y
+	;; st Z+, r16
+	;;
+	;; But only Y and Z can be used with displacment
+	;; ldd r16, Y + 10
+	;; std Z + 5, r16
+	;;
+	;; and only Z can be used to indirect read the flash memory, and no pre-decrement or displacement are available :
+	;; lpm r16, Z+
+	;; lpm r17, Z
+	;; WRITE_TO_LCD takes two arguments that are passed via r30 and r31.
+	;; They are respectively the low and high bytes of the string address
+WRITE_TO_LCD:
+	push	r16
+	push	r17
+START_WRITE_TO_LCD:
+
+	lpm	r16, Z+
+	
+	ldi	r17, 0b0
+	cp	r16, r17		; Have we hit the null byte?
+	breq    END_WRITE_TO_LCD
+	;; Output character command.
+	out	PortA, r16
+	ldi	r16, low(registerSelect)	; Set RS control signal
+	out	PortC, r16
+	;; Set E and RS control siginals.
+	ldi	r16, (low(registerSelect) | low(enable))
+	out	PortC, r16
+	ldi	r27, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r28, 0b00000001
+	call	BUSY_WAIT
+	ldi	r16, low(registerSelect)	; Clear E control signal
+	out	PortC, r16
+	jmp	START_WRITE_TO_LCD
+END_WRITE_TO_LCD:
+	pop	r17
+	pop	r16
+	ret
+	
+	
 	
 INIT:
 	call	DISABLE_JTAG
-	;; call	BUSY_WAIT
-	;; call	BUSY_WAIT
 	call	SET_DDRS
 	call	INIT_LCD
-	;; clr	secondCount	; Clear the regs we store time in
-	;; clr	minuteCount
-	;; clr	hourCount
-
-	;; ldi	r16, low(ddrSecondPins)
-	;; out	DDRD, r16	; Set the Data Direction Register for Port D (seconds)
-	;; out	PortD, secondCount ; Set second pins low
-
-	;; ldi	r16, low(ddrMinutePins)
-	;; out	DDRC, r16	; Set the Data Direction Register for port C (minutes)
-	;; out	PortC, minuteCount ; Set minute pins low
-
-	; Port A is shared between hours and the time adjustment indicator LEDs
-	;; ldi	r16, low(ddrHourAndAdjustLEDIndicatorPins)
-	;; out	DDRA, r16	; Set the Data Direction Register for port A (hours)
-	;; out	PortA, hourCount	; Set hour pins low
-
-	;; ldi	r16, low(ddrAdjustPins)
-	;; Set the Data Direction Register for Port B (time adjustment controls
-	;; and time signal)
-	;; out	DDRB, r16	; Also note that PB2 is used for our time signal
-	;; ldi	r16, low(adjustPinsPullups)
-	; Set pull up's high (except for PB2 (time signal) which is active high)
-	;; out	PortB, r16
-	
-	;; ldi	r16, low(int2En)
-	;; out	GICR, r16	; Set external interrupt 2 to be enabled
 	ret
 
 
@@ -121,9 +147,8 @@ DISABLE_JTAG:			;===============================================
 	;; depending on what is attached to the pins.
 SET_DDRS:
 	push	r16
-	ldi	r16, low(DDRportA)
+	ldi	r16, low(setDDRToAllOutputs)
 	out	DDRA, r16
-	ldi	r16, low(DDRportC)
 	out	DDRC, r16
 	pop	r16
 
@@ -147,7 +172,6 @@ SET_LCD_FUNCTIONS:
 	;; toggle enable bit to send instruction.
 	ldi	r16, low(Enable)
 	out	PortC, r16	; Send instruction to display.
-	;; call	BUSY_WAIT
 	ldi	r16, 0b0
 	out	PortC, r16	; Stop sending.
 	pop	r16
@@ -166,14 +190,18 @@ TURN_ON_DISPLAY:
 	;; toggle enable bit to send instruction.
 	ldi	r16, low(Enable)
 	out	PortC, r16	; Send instruction to display.
-	;; call	BUSY_WAIT
 	ldi	r16, 0b0
 	out	PortC, r16	; Stop sending.
 	pop	r16
 	ret
 
 
+	;; BUSY_WAIT takes two arguments that are passed via r28 and r27.
+	;; It loops r28 ^ 2 * r27 times.
 BUSY_WAIT:			;===============================================
+	push	r31
+	push	r30
+	push	r29
 	clr	r31
 	clr	r30
 	clr	r29
@@ -185,15 +213,18 @@ BUSY_WAIT_LOOP_1_START:
 	
 BUSY_WAIT_LOOP_2_START:
 	inc	r29
-	
-	cpi	r29, 0b11110000
+
+	cp	r29, r28
 	brne	BUSY_WAIT_LOOP_2_START
 
-	cpi	r30, 0b11110000
+	cp	r30, r28
 	brne	BUSY_WAIT_LOOP_1_START
 	
-	cpi	r31, 0b11110000
+	cp	r31, r27
 	brne	BUSY_WAIT_LOOP_0_START
+	pop	r29	
+	pop	r30
+	pop	r31
 	ret
 
 
