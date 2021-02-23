@@ -20,9 +20,9 @@
 	.equ	DDRportA = 0b11111111
 	;; ======================= LCD Related Constants =======================
 	;; == Display control siginals E (enable), RW (read write), RS (register select) ==
-	.equ	Enable		  = 0b10000000
+	.equ	Enable		  = 0b00100000
 	.equ	ReadWrite	  = 0b01000000
-	.equ	RegisterSelect	  = 0b00100000
+	.equ	RegisterSelect	  = 0b10000000
 	;; == Display commands (the position of the first 1 indicates the command.) ==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.equ	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
@@ -124,7 +124,7 @@ SET_DDRS:
 	ldi	r16, low(DDRportA)
 	out	DDRA, r16
 	ldi	r16, low(DDRportC)
-	out	DDRA, r16
+	out	DDRC, r16
 	pop	r16
 
 	
