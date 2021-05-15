@@ -5,7 +5,7 @@
 	;; the caller if it is used by the caller for something else. Arguments
 	;; should start from r16 unless they can't (for example when using Z.)
 	;; We note that AT-PAn -> LCD-Dn for n = 0 up to 7 and where -> means is
-	;; connected to. We not also that AT-PC7 -> LCD-RS, AT-PC6 -> LCD-RW
+	;; connected to. We note also that AT-PC7 -> LCD-RS, AT-PC6 -> LCD-RW
 	;; and AT-PC5 -> LCD-E.
 	
 	.nolist			; Don't include in the .lst file if we ask the
@@ -20,7 +20,8 @@
 
 	;; =====================================================================
 	;; ============================= Constants =============================
-	.set	setDDRToAllOutputs = 0b11111111
+	.set	setDDRToAllOutputs	= 0b11111111
+	.set	setDDRToAllInputs	= 0b00000000
 	;; ======================= LCD Related Constants =======================
 	.set	lcdLine1	= 0b00000000
 	.set	lcdLine2Half	= 0x7f ; 127, lcdLine2 should equal this after right shift.
@@ -31,8 +32,10 @@
 	.set	halfDDRAMSize	  = 0x29
 	;; == Display control siginals E (enable), RW (read write), RS (register select.) ==
 	.set	enable		  = 0b00100000
-	.set	readWrite	  = 0b01000000
-	.set	registerSelect	  = 0b10000000
+	.set	enableRead	  = 0b01000000
+	.set	enableWrite	  = 0b00000000
+	.set	registerSelectOn	= 0b10000000
+	.set	registerSelectOff	= 0b00000000
 	;; == Display commands (the position of the first 1 indicates the command.) ==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.set	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
@@ -41,15 +44,17 @@
 	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
 	.set	setDDRAMAddressTo2ndLine	  = 0b11000000
 	;; S/C (display shift (1) / cursor move), R/L (shift to the right (1) / shift to the left)
-	.set	shiftDisplayRight	= 0b00011100
+	.set	shiftDisplayLeft	= 0b00011000
 
 
 	;; ======================== Start data segment! ========================
 	;; =====================================================================
 	.dseg
+	;; Sould only be changed by SWITCH_LCD_LINE (after INIT_LCD.)
 	currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
-	line1CurrentStrLen:	.byte 1 ; Reserve 1 byte (current str len can't be more than 40 bytes.)
-	line2CurrentStrLen:	.byte 1
+	;; Stores the length of the longest line on the display.
+	;; Reserve 1 byte (current max line len can't be more than 40 bytes.)
+	currentMaxLineLen:	.byte 1
 
 	
 	;; ======================== Start code segment! ========================
@@ -80,8 +85,8 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
-	helloStr:	.db "- Hello Girls! -", 0, 0 ; Extra 0 so bytes are even.
-	helloStr2nd:	.db "IFeelThoseThings", 0, 0
+	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
+	helloStr2nd:	.db "IFeelThoseFeelings", 0, 0
 
 	
 	;; =====================================================================
@@ -90,17 +95,17 @@ MAIN:
 	ldi	r30, low(2*helloStr) ; Load address of string.
 	ldi	r31, high(2*helloStr)	
 	call	WRITE_TO_LCD
-
+	
 	call	SWITCH_LCD_LINE
 	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
 	call	WRITE_TO_LCD
 
-	ldi	r16, 0b00111111
-	ldi	r17, 0b00111111
+	
 START_OF_MAIN:
 	;; call	CLEAR_LCD
-	call	BUSY_WAIT
+	ldi	r16, 0b00111111
+	ldi	r17, 0b00011101	; Maybe have a menu option to aulter this vlaue?
 	call	BUSY_WAIT
 	call	SCROLL_LCD
 	rjmp	START_OF_MAIN
@@ -140,39 +145,26 @@ START_WRITE_TO_LCD:
 	brge	END_WRITE_TO_LCD
 	;; Output character command.
 	out	PortA, r16
-	ldi	r16, low(registerSelect)	; Set RS control signal
+	ldi	r16, low(registerSelectOn)	; Set RS control signal
 	out	PortC, r16
 	;; Set E and RS control siginals.
-	ldi	r16, (low(registerSelect) | low(enable))
+	ldi	r16, (low(registerSelectOn) | low(enable))
 	out	PortC, r16
-	push	r17		; BUSY_WAIT takes r17 and r16 as arguments.
-	push	r16
 	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
 	ldi	r16, 0b00000001
 	call	BUSY_WAIT
-	pop	r16
-	pop	r17
-	ldi	r16, low(registerSelect)	; Clear E control signal
+	ldi	r16, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r16
 	jmp	START_WRITE_TO_LCD
 END_WRITE_TO_LCD:
 	dec	r18		; We inc'ed for '\0'
-	ldi	r30, low(currentLCDLine)
-	ldi	r31, high(currentLCDLine)
+	ldi	r30, low(currentMaxLineLen)
+	ldi	r31, high(currentMaxLineLen)
 	ld	r16, Z
-	lsr	r16		  ; Divide by 2. If r16 = lcdLine2 it should now = lcdLine2Half
-	cpi	r16, lcdLine2Half ; We do this because we get the warning "Constant out of range (-128 <= k <= 255). Will be masked" otherwise.
-	breq	SET_LCD_LINE_2_LEN
-				; We must update line1CurrentStrLen to str (pointed to by Z at the start of the rutine) len.
-	ldi	r30, low(line1CurrentStrLen)
-	ldi	r31, high(line1CurrentStrLen)
+	cp	r18, r16
+	brlo	SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
 	st	Z, r18		; Store str len at line2CurrentStrLen.
-	jmp	AFTER_SET_LCD_LINE_LEN
-	
-SET_LCD_LINE_2_LEN:		; We must update line2CurrentStrLen to str (pointed to by Z at the start of the rutine) len.
-	ldi	r30, low(line2CurrentStrLen)
-	ldi	r31, high(line2CurrentStrLen)
-	st	Z, r18		; Store str len at line2CurrentStrLen.
+SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
 	
 AFTER_SET_LCD_LINE_LEN:
 	pop	r18
@@ -202,17 +194,70 @@ SWITCH_LCD_LINE:
 
 
 SCROLL_LCD:
-	push	r16
+	;; push	r16
+
+	;; call	READ_LCD_ADDRESS_COUNTER
+
+
+
+	;; mov	r16, r17
+
+	;; out	PortA, r16
+	;; ldi	r16, low(registerSelectOn)	; Set RS control signal
+	;; out	PortC, r16
+	;; ;; Set E and RS control siginals.
+	;; ldi	r16, (low(registerSelectOn) | low(enable))
+	;; out	PortC, r16
+	;; ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	;; ldi	r16, 0b00000001
+	;; call	BUSY_WAIT
+	;; ldi	r16, low(registerSelectOn)	; Clear E control signal
+	;; out	PortC, r16
+
 	
-	ldi	r16, shiftDisplayRight
+	;; ldi	r30, low(currentMaxLineLen)
+	;; ldi	r31, high(currentMaxLineLen)
+	;; ld	r16, Z
+	;; cp	r16, r17
+	;; breq	LOOP
+	
+	ldi	r16, shiftDisplayLeft
 	call	SEND_LCD_INSTRUCTION
 	
+	;; pop	r16
+	ret
+;; LOOP:
+;; 	jmp LOOP
+
+
+READ_LCD_ADDRESS_COUNTER:	; Returns the LCD address counter in r17.
+	push	r16
+
+	ldi	r17, setDDRToAllInputs
+	call	SET_DDRA	; Set port A to all inputs.
+	ldi	r17, (low(registerSelectOff) | low(enableRead) | low(enableRead))
+	out	PortC, r17
+
+	ldi	r16, 0b00000011
+	ldi	r17, 0b00000011
+	call	BUSY_WAIT
+	in	r17, PortA
+	;; Reset LCD settings back to what they were after init (this will reset
+	;; the cursor position) and set the direction of port A back to output.
+	ldi	r16, low(functionSet_data)
+	call	SEND_LCD_INSTRUCTION
+	ldi	r16, low(setDDRToAllOutputs)
+	call	SET_DDRA	; SET_DDRA doesn't change r16
+
 	pop	r16
 	ret
 	
+	
 INIT:
 	call	DISABLE_JTAG
-	call	SET_DDRS
+	ldi	r16, low(setDDRToAllOutputs)
+	call	SET_DDRA	; SET_DDRA doesn't change r16
+	call	SET_DDRC
 	call	INIT_LCD
 	ret
 
@@ -239,12 +284,14 @@ DISABLE_JTAG:			;===============================================
 
 	;; Set the data direction registers. These may be changed latter
 	;; depending on what is attached to the pins.
-SET_DDRS:
-	push	r16
-	ldi	r16, low(setDDRToAllOutputs)
+SET_DDRA:
 	out	DDRA, r16
+	ret
+
+
+SET_DDRC:
 	out	DDRC, r16
-	pop	r16
+	ret	
 
 	
 INIT_LCD:
@@ -254,12 +301,17 @@ INIT_LCD:
 	ldi  r16, low(functionSet_data) ; SEND_LCD_INSTRUCTION takes r16 as an argument.
 	call SEND_LCD_INSTRUCTION
 	call TURN_ON_DISPLAY
-	;; We need to know the currentLCDLine we are writing to to store the
-	;; length of the string written.
+	;; It will simplify the code to know the current LCD line (there may be
+	;; a way to find this our from the LCD controller, however we don't know
+	;; of any.)
 	ldi	r30, low(currentLCDLine) ; Load address of currentLCDLine into Z.
 	ldi	r31, high(currentLCDLine)
 	ldi	r16, lcdLine1
 	st	Z, r16		; Set currentLCDLine to the first line (lcdLine1.)
+	ldi	r30, low(currentMaxLineLen) ;Load address of currentMaxLineLen into Z.
+	ldi	r31, high(currentMaxLineLen)
+	ldi	r16, 0b0
+	st	Z, r16		; Set currentMaxLineLen to 0 (we havent written anything to the display yet.)
 	ret
 
 
