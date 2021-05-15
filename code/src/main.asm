@@ -20,19 +20,21 @@
 
 	;; =====================================================================
 	;; ============================= Constants =============================
-	.equ	setDDRToAllOutputs = 0b11111111
+	.set	setDDRToAllOutputs = 0b11111111
 	;; ======================= LCD Related Constants =======================
+	;; The Display data RAM (DDRAM) is 80 x 8 bits.
+	.set	halfDDRAMSize	  = 0x28 ; 0x28 = 40
 	;; == Display control siginals E (enable), RW (read write), RS (register select.) ==
-	.equ	enable		  = 0b00100000
-	.equ	readWrite	  = 0b01000000
-	.equ	registerSelect	  = 0b10000000
+	.set	enable		  = 0b00100000
+	.set	readWrite	  = 0b01000000
+	.set	registerSelect	  = 0b10000000
 	;; == Display commands (the position of the first 1 indicates the command.) ==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
-	.equ	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
+	.set	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
 	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
-	.equ	displayOn_data    = 0b00001111 ; That is bits 2, 1 and 0
+	.set	displayOn_data    = 0b00001111 ; That is bits 2, 1 and 0
 	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
-	.equ	setDDRAMAddress	  = 0b11000000
+	.set	setDDRAMAddressTo2ndLine	  = 0b11000000
 
 	;; =====================================================================
 	;; ========================== Interrupt Vector =========================
@@ -66,41 +68,19 @@
 	;; =====================================================================
 	;; ========================= Main Code Section =========================
 MAIN:
-	ldi	r30, low(2*helloStr)
-	ldi	r31, high(2*helloStr)
-	
+	ldi	r30, low(2*helloStr) ; Load address of string.
+	ldi	r31, high(2*helloStr)	
 	call	WRITE_TO_LCD
 
-
-
-
-	push	r16
-	;; Output display function set command.
-	;; Set display parameters (DL (bus width), N (number of lines),
-	;; F (font size)). We set the state of the data pins (port A) high first.
-	ldi	r16, low(setDDRAMAddress)
-	out	PortA, r16
-	;; Clear control signals (high 3 bit's of port C.)
-	ldi	r16, 0b0
-	out	PortC, r16
-	;; toggle enable bit to send instruction.
-	ldi	r16, low(Enable)
-	out	PortC, r16	; Send instruction to display.
-	ldi	r16, 0b0
-	out	PortC, r16	; Stop sending.
-	pop	r16
-
-	
-
-
-	ldi	r30, low(2*helloStr2nd)
+	ldi	r16, low(setDDRAMAddressTo2ndLine) ; Switch to second line :)
+	call	SEND_LCD_INSTRUCTION
+	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
 	call	WRITE_TO_LCD
 	
 START_OF_MAIN:
 	;; call	CLEAR_LCD
 	rjmp	START_OF_MAIN
-	
 
 
 	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
@@ -151,8 +131,7 @@ START_WRITE_TO_LCD:
 END_WRITE_TO_LCD:
 	pop	r17
 	pop	r16
-	ret
-	
+	ret	
 	
 	
 INIT:
