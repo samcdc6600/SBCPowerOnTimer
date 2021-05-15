@@ -1,6 +1,9 @@
 	;; SBCPowerOnTimer
 	;; Note that we use a callee saved convention for registers and that a
-	;; function should only save a register if it uses it.
+	;; function should only save a register if it uses it. Of course if a
+	;; function takes an argument then the register will need to be saved by
+	;; the caller if it is used by the caller for something else. Arguments
+	;; should start from r16.
 	;; We note that AT-PAn -> LCD-Dn for n = 0 up to 7 and where -> means is
 	;; connected to. We not also that AT-PC7 -> LCD-RS, AT-PC6 -> LCD-RW
 	;; and AT-PC5 -> LCD-E.
@@ -26,8 +29,10 @@
 	;; == Display commands (the position of the first 1 indicates the command.) ==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.equ	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
-	;;  D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
+	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
 	.equ	displayOn_data    = 0b00001111 ; That is bits 2, 1 and 0
+	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
+	.equ	setDDRAMAddress	  = 0b11000000
 
 	;; =====================================================================
 	;; ========================== Interrupt Vector =========================
@@ -54,7 +59,10 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
-	helloStr:	.db "- Hello Girls! -", 0
+	helloStr:	.db "- Hello Girls! -", 0, 0
+	helloStr2nd:	.db "IFeelThoseThings", 0, 0
+
+	
 	;; =====================================================================
 	;; ========================= Main Code Section =========================
 MAIN:
@@ -62,6 +70,33 @@ MAIN:
 	ldi	r31, high(2*helloStr)
 	
 	call	WRITE_TO_LCD
+
+
+
+
+	push	r16
+	;; Output display function set command.
+	;; Set display parameters (DL (bus width), N (number of lines),
+	;; F (font size)). We set the state of the data pins (port A) high first.
+	ldi	r16, low(setDDRAMAddress)
+	out	PortA, r16
+	;; Clear control signals (high 3 bit's of port C.)
+	ldi	r16, 0b0
+	out	PortC, r16
+	;; toggle enable bit to send instruction.
+	ldi	r16, low(Enable)
+	out	PortC, r16	; Send instruction to display.
+	ldi	r16, 0b0
+	out	PortC, r16	; Stop sending.
+	pop	r16
+
+	
+
+
+	ldi	r30, low(2*helloStr2nd)
+	ldi	r31, high(2*helloStr2nd)
+	call	WRITE_TO_LCD
+	
 START_OF_MAIN:
 	;; call	CLEAR_LCD
 	rjmp	START_OF_MAIN
@@ -103,9 +138,13 @@ START_WRITE_TO_LCD:
 	;; Set E and RS control siginals.
 	ldi	r16, (low(registerSelect) | low(enable))
 	out	PortC, r16
-	ldi	r27, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r28, 0b00000001
+	push	r17		; BUSY_WAIT takes r17 and r16 as arguments.
+	push	r16
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r16, 0b00000001
 	call	BUSY_WAIT
+	pop	r16
+	pop	r17
 	ldi	r16, low(registerSelect)	; Clear E control signal
 	out	PortC, r16
 	jmp	START_WRITE_TO_LCD
@@ -154,12 +193,12 @@ SET_DDRS:
 
 	
 INIT_LCD:
-	call SET_LCD_FUNCTIONS
+	call SET_LCD_FUNCTION
 	call TURN_ON_DISPLAY
 	ret
 
 
-SET_LCD_FUNCTIONS:
+SET_LCD_FUNCTION:
 	push	r16
 	;; Output display function set command.
 	;; Set display parameters (DL (bus width), N (number of lines),
@@ -196,31 +235,31 @@ TURN_ON_DISPLAY:
 	ret
 
 
-	;; BUSY_WAIT takes two arguments that are passed via r28 and r27.
-	;; It loops r28 ^ 2 * r27 times.
+	;; BUSY_WAIT takes two arguments that are passed via r16 and r17.
+	;; It loops ~ r16 ^ 2 * r17 times.
 BUSY_WAIT:			;===============================================
 	push	r31
 	push	r30
 	push	r29
 	clr	r31
-	clr	r30
-	clr	r29
 BUSY_WAIT_LOOP_0_START:
 	inc	r31
-	
+
+	clr	r30
 BUSY_WAIT_LOOP_1_START:
 	inc	r30
-	
+
+	clr	r29
 BUSY_WAIT_LOOP_2_START:
 	inc	r29
 
-	cp	r29, r28
+	cp	r29, r16
 	brne	BUSY_WAIT_LOOP_2_START
 
-	cp	r30, r28
+	cp	r30, r16
 	brne	BUSY_WAIT_LOOP_1_START
 	
-	cp	r31, r27
+	cp	r31, r17
 	brne	BUSY_WAIT_LOOP_0_START
 	pop	r29	
 	pop	r30
