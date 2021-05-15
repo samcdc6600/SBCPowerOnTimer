@@ -193,17 +193,16 @@ SET_DDRS:
 
 	
 INIT_LCD:
-	call SET_LCD_FUNCTION
+	;; Output display function set command.
+	;; Set display parameters (DL (bus width), N (number of lines),
+	;; F (font size)). We set the state of the data pins (port A) high first.
+	ldi  r16, low(functionSet_data) ; SEND_LCD_INSTRUCTION takes r16 as an argument.
+	call SEND_LCD_INSTRUCTION
 	call TURN_ON_DISPLAY
 	ret
 
 
-SET_LCD_FUNCTION:
-	push	r16
-	;; Output display function set command.
-	;; Set display parameters (DL (bus width), N (number of lines),
-	;; F (font size)). We set the state of the data pins (port A) high first.
-	ldi	r16, low(functionSet_data)
+SEND_LCD_INSTRUCTION:
 	out	PortA, r16
 	;; Clear control signals (high 3 bit's of port C.)
 	ldi	r16, 0b0
@@ -213,7 +212,6 @@ SET_LCD_FUNCTION:
 	out	PortC, r16	; Send instruction to display.
 	ldi	r16, 0b0
 	out	PortC, r16	; Stop sending.
-	pop	r16
 	ret
 
 
