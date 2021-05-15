@@ -3,7 +3,7 @@
 	;; function should only save a register if it uses it. Of course if a
 	;; function takes an argument then the register will need to be saved by
 	;; the caller if it is used by the caller for something else. Arguments
-	;; should start from r16.
+	;; should start from r16 unless they can't (for example when using Z.)
 	;; We note that AT-PAn -> LCD-Dn for n = 0 up to 7 and where -> means is
 	;; connected to. We not also that AT-PC7 -> LCD-RS, AT-PC6 -> LCD-RW
 	;; and AT-PC5 -> LCD-E.
@@ -22,8 +22,13 @@
 	;; ============================= Constants =============================
 	.set	setDDRToAllOutputs = 0b11111111
 	;; ======================= LCD Related Constants =======================
+	.set	lcdLine1	= 0b00000000
+	.set	lcdLine2Half	= 0x7f ; 127, lcdLine2 should equal this after right shift.
+	.set	lcdLine2	= 0b11111111 ; Must be ff as we invert to get lcdLine1.
 	;; The Display data RAM (DDRAM) is 80 x 8 bits.
-	.set	halfDDRAMSize	  = 0x28 ; 0x28 = 40
+	;; 0x28 = 40 (0x29 because the ATmega16 doesn't have brgt (branch if
+	;; greater than) so we must use brsh (branch if same or higher.)
+	.set	halfDDRAMSize	  = 0x29
 	;; == Display control siginals E (enable), RW (read write), RS (register select.) ==
 	.set	enable		  = 0b00100000
 	.set	readWrite	  = 0b01000000
@@ -35,7 +40,21 @@
 	.set	displayOn_data    = 0b00001111 ; That is bits 2, 1 and 0
 	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
 	.set	setDDRAMAddressTo2ndLine	  = 0b11000000
+	;; S/C (display shift (1) / cursor move), R/L (shift to the right (1) / shift to the left)
+	.set	shiftDisplayRight	= 0b00011100
 
+
+	;; ======================== Start data segment! ========================
+	;; =====================================================================
+	.dseg
+	currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
+	line1CurrentStrLen:	.byte 1 ; Reserve 1 byte (current str len can't be more than 40 bytes.)
+	line2CurrentStrLen:	.byte 1
+
+	
+	;; ======================== Start code segment! ========================
+	;; =====================================================================
+	.cseg			
 	;; =====================================================================
 	;; ========================== Interrupt Vector =========================
 	jmp   RESET	; Reset Handler
@@ -61,7 +80,7 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
-	helloStr:	.db "- Hello Girls! -", 0, 0
+	helloStr:	.db "- Hello Girls! -", 0, 0 ; Extra 0 so bytes are even.
 	helloStr2nd:	.db "IFeelThoseThings", 0, 0
 
 	
@@ -72,14 +91,18 @@ MAIN:
 	ldi	r31, high(2*helloStr)	
 	call	WRITE_TO_LCD
 
-	ldi	r16, low(setDDRAMAddressTo2ndLine) ; Switch to second line :)
-	call	SEND_LCD_INSTRUCTION
+	call	SWITCH_LCD_LINE
 	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
 	call	WRITE_TO_LCD
-	
+
+	ldi	r16, 0b00111111
+	ldi	r17, 0b00111111
 START_OF_MAIN:
 	;; call	CLEAR_LCD
+	call	BUSY_WAIT
+	call	BUSY_WAIT
+	call	SCROLL_LCD
 	rjmp	START_OF_MAIN
 
 
@@ -104,13 +127,17 @@ START_OF_MAIN:
 WRITE_TO_LCD:
 	push	r16
 	push	r17
-START_WRITE_TO_LCD:
-
-	lpm	r16, Z+
+	push	r18		; Used to count str len, where str is pointed to by Z.
 	
+	clr	r18
+START_WRITE_TO_LCD:
+	lpm	r16, Z+
+	inc	r18
 	ldi	r17, 0b0
 	cp	r16, r17		; Have we hit the null byte?
 	breq    END_WRITE_TO_LCD
+	cpi	r18, halfDDRAMSize	; Have we reached the end of the display ram for this line.
+	brge	END_WRITE_TO_LCD
 	;; Output character command.
 	out	PortA, r16
 	ldi	r16, low(registerSelect)	; Set RS control signal
@@ -129,10 +156,59 @@ START_WRITE_TO_LCD:
 	out	PortC, r16
 	jmp	START_WRITE_TO_LCD
 END_WRITE_TO_LCD:
+	dec	r18		; We inc'ed for '\0'
+	ldi	r30, low(currentLCDLine)
+	ldi	r31, high(currentLCDLine)
+	ld	r16, Z
+	lsr	r16		  ; Divide by 2. If r16 = lcdLine2 it should now = lcdLine2Half
+	cpi	r16, lcdLine2Half ; We do this because we get the warning "Constant out of range (-128 <= k <= 255). Will be masked" otherwise.
+	breq	SET_LCD_LINE_2_LEN
+				; We must update line1CurrentStrLen to str (pointed to by Z at the start of the rutine) len.
+	ldi	r30, low(line1CurrentStrLen)
+	ldi	r31, high(line1CurrentStrLen)
+	st	Z, r18		; Store str len at line2CurrentStrLen.
+	jmp	AFTER_SET_LCD_LINE_LEN
+	
+SET_LCD_LINE_2_LEN:		; We must update line2CurrentStrLen to str (pointed to by Z at the start of the rutine) len.
+	ldi	r30, low(line2CurrentStrLen)
+	ldi	r31, high(line2CurrentStrLen)
+	st	Z, r18		; Store str len at line2CurrentStrLen.
+	
+AFTER_SET_LCD_LINE_LEN:
+	pop	r18
 	pop	r17
 	pop	r16
-	ret	
+	ret
+
+
+SWITCH_LCD_LINE:
+	push	r16
+	push	r30
+	push	r31
 	
+	ldi	r16, low(setDDRAMAddressTo2ndLine) ; Switch to second line :)
+	call	SEND_LCD_INSTRUCTION
+	
+	ldi	r30, low(currentLCDLine)
+	ldi	r31, high(currentLCDLine)
+	ld	r18, Z
+	com	r18		; One's complement (invert all bits.)
+	st	Z, r18		; Store current LCD line (r18.)
+	
+	pop	r31
+	pop	r30
+	pop	r16
+	ret
+
+
+SCROLL_LCD:
+	push	r16
+	
+	ldi	r16, shiftDisplayRight
+	call	SEND_LCD_INSTRUCTION
+	
+	pop	r16
+	ret
 	
 INIT:
 	call	DISABLE_JTAG
@@ -178,6 +254,12 @@ INIT_LCD:
 	ldi  r16, low(functionSet_data) ; SEND_LCD_INSTRUCTION takes r16 as an argument.
 	call SEND_LCD_INSTRUCTION
 	call TURN_ON_DISPLAY
+	;; We need to know the currentLCDLine we are writing to to store the
+	;; length of the string written.
+	ldi	r30, low(currentLCDLine) ; Load address of currentLCDLine into Z.
+	ldi	r31, high(currentLCDLine)
+	ldi	r16, lcdLine1
+	st	Z, r16		; Set currentLCDLine to the first line (lcdLine1.)
 	ret
 
 
