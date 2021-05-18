@@ -90,10 +90,10 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
-	;; helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
-	;; helloStr2nd:	.db "IFeelThoseFeelings", 0, 0
-	helloStr:	.db "I Love You So I Do", 0, 0 ; Extra 0 so bytes are even.
-	helloStr2nd:	.db "~~~~~", 0, 0
+	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
+	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
+	;; helloStr:	.db "I Love You So I Do", 0, 0 ; Extra 0 so bytes are even.
+	;; helloStr2nd:	.db "~~~~~", 0, 0
 
 	
 	;; =====================================================================
@@ -110,9 +110,8 @@ MAIN:
 
 	
 START_OF_MAIN:
-	;; call	CLEAR_LCD
-	ldi	r16, 0b00111111
-	ldi	r17, 0b00011101	; Maybe have a menu option to aulter this vlaue?
+	ldi	r16, 0b01000000
+	ldi	r17, 0b00100111	; Maybe have a menu option to aulter this vlaue?
 	call	BUSY_WAIT
 	call	SCROLL_LCD
 	rjmp	START_OF_MAIN
@@ -232,12 +231,12 @@ SCROLL_LCD_PROPER:
 	ld	r17, Z		; Load *currentScrollLen into r17
 	subi	r16, displayWidth ; We've already made sure r16 < displayWidth in SCROLL_LCD.
 	cp	r17, r16
-	breq	FAST_SCROLL_BACK ; We've scrolled to the end of currentMaxLineLen.
+	breq	FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
 
 	ldi	r16, shiftDisplayLeft
 	call	SEND_LCD_INSTRUCTION
 
-	inc	r17
+	inc	r17		; Inc *currentScrollLen
 	jmp	SCROLL_LCD_PROPER_RET
 
 FAST_SCROLL_BACK:
@@ -248,125 +247,10 @@ FAST_SCROLL_BACK:
 	brne	FAST_SCROLL_BACK
 
 SCROLL_LCD_PROPER_RET:
-	st	Z, r17
+	st	Z, r17		; Store *currentScrollLen
 	pop	r17
 	pop	r16
 	ret
-
-;; 	;; Load current max line len (the length of the longest currently displayed line.)
-;; 	ldi	r30, low(2*currentMaxLineLen)
-;; 	ldi	r31, high(2*currentMaxLineLen)
-;; 	ld	r16, Z
-;; 	subi	r16, screenLen	; Account for screen size.
-;; 	;; Load current scroll len (how many characters we have scrolled so far.)
-;; 	ldi	r30, low(2*currentScrollLen)
-;; 	ldi	r31, high(2*currentScrollLen)
-;; 	ld	r17, Z
-;; 	;; ldi	r16, 0b00011111
-;; 	cp	r17, r16	; Cmp (*currentMaxLineLenTo - *currentScrollLen)
-;; 	breq	FAST_FORWARD
-
-;; 	;; push	r16		; r16 holds *currentMaxLineLen
-;; 	ldi	r16, shiftDisplayLeft
-;; 	call	SEND_LCD_INSTRUCTION
-;; 	;; pop	r16
-;; 	jmp	STAY_SLOW
-
-;; FAST_FORWARD:
-;; 	ldi	r17, DDRAMSize
-;; 	sub	r17, r16
-
-;; SCROLL_LCD_FOR:			; r17 > 0
-;; 	ldi	r16, shiftDisplayLeft
-;; 	call	SEND_LCD_INSTRUCTION
-;; 	dec	r17
-;; 	cpi	r17, 0b0
-;; 	brne	SCROLL_LCD_FOR
-;; 	ldi	r17, 0xff	; Will wrape around when incremented.
-;; STAY_SLOW:
-
-;; 	inc	r17
-;; 	st	Z, r17
-
-;; 	pop	r31
-;; 	pop	r30
-;; 	pop	r17
-;; 	pop	r16
-;; 	ret
-
-
-;; SCROLL_LCD:
-	
-;; 	push	r16
-;; 	push	r17
-;; 	push	r30
-;; 	push	r31
-
-;; 	;; Load current max line len (the length of the longest currently displayed line.)
-;; 	ldi	r30, low(2*currentMaxLineLen)
-;; 	ldi	r31, high(2*currentMaxLineLen)
-;; 	ld	r16, Z
-;; 	subi	r16, screenLen	; Account for screen size.
-;; 	;; Load current scroll len (how many characters we have scrolled so far.)
-;; 	ldi	r30, low(2*currentScrollLen)
-;; 	ldi	r31, high(2*currentScrollLen)
-;; 	ld	r17, Z
-;; 	;; ldi	r16, 0b00011111
-;; 	cp	r17, r16	; Cmp (*currentMaxLineLenTo - *currentScrollLen)
-;; 	breq	FAST_FORWARD
-
-;; 	;; push	r16		; r16 holds *currentMaxLineLen
-;; 	ldi	r16, shiftDisplayLeft
-;; 	call	SEND_LCD_INSTRUCTION
-;; 	;; pop	r16
-;; 	jmp	STAY_SLOW
-
-;; FAST_FORWARD:
-;; 	ldi	r17, DDRAMSize
-;; 	sub	r17, r16
-
-;; SCROLL_LCD_FOR:			; r17 > 0
-;; 	ldi	r16, shiftDisplayLeft
-;; 	call	SEND_LCD_INSTRUCTION
-;; 	dec	r17
-;; 	cpi	r17, 0b0
-;; 	brne	SCROLL_LCD_FOR
-;; 	ldi	r17, 0xff	; Will wrape around when incremented.
-;; STAY_SLOW:
-
-;; 	inc	r17
-;; 	st	Z, r17
-
-;; 	pop	r31
-;; 	pop	r30
-;; 	pop	r17
-;; 	pop	r16
-;; 	ret
-;; LOOP:
-;; 	jmp LOOP
-
-
-;; READ_LCD_ADDRESS_COUNTER:	; Returns the LCD address counter in r17.
-;; 	push	r16
-
-;; 	ldi	r17, setDDRToAllInputs
-;; 	call	SET_DDRA	; Set port A to all inputs.
-;; 	ldi	r17, (low(registerSelectOff) | low(enableRead) | low(enableRead))
-;; 	out	PortC, r17
-
-;; 	ldi	r16, 0b00000011
-;; 	ldi	r17, 0b00000011
-;; 	call	BUSY_WAIT
-;; 	in	r17, PortA
-;; 	;; Reset LCD settings back to what they were after init (this will reset
-;; 	;; the cursor position) and set the direction of port A back to output.
-;; 	ldi	r16, low(functionSet_data)
-;; 	call	SEND_LCD_INSTRUCTION
-;; 	ldi	r16, low(setDDRToAllOutputs)
-;; 	call	SET_DDRA	; SET_DDRA doesn't change r16
-
-;; 	pop	r16
-;; 	ret
 	
 	
 INIT:
@@ -414,7 +298,7 @@ INIT_LCD:
 	;; Output display function set command.
 	;; Set display parameters (DL (bus width), N (number of lines),
 	;; F (font size)). We set the state of the data pins (port A) high first.
-	ldi  r16, low(functionSet_data) ; SEND_LCD_INSTRUCTION takes r16 as an argument.
+	ldi  r16, functionSet_data ; SEND_LCD_INSTRUCTION takes r16 as an argument.
 	call SEND_LCD_INSTRUCTION
 	call TURN_ON_DISPLAY
 	;; It will simplify the code to know the current LCD line (there may be
@@ -424,12 +308,10 @@ INIT_LCD:
 	ldi	r31, high(2*currentLCDLine)
 	ldi	r16, lcdLine1
 	st	Z, r16		; Set *currentLCDLine to the first line (lcdLine1.)
-	
 	ldi	r30, low(2*currentMaxLineLen) ; Load currentMaxLineLen into Z.
 	ldi	r31, high(2*currentMaxLineLen)
 	ldi	r16, 0b0
 	st	Z, r16		; Set *currentMaxLineLen to 0.
-	
 	ldi	r30, low(2*currentScrollLen) ; Load currentScrollLen into Z.
 	ldi	r31, high(2*currentScrollLen)
 	ldi	r16, 0b0
