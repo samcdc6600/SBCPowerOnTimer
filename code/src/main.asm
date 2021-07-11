@@ -20,8 +20,17 @@
 
 	;; =====================================================================
 	;; ============================= Constants =============================
-	.set	setDDRToAllOutputs	= 0b11111111
-	.set	setDDRToAllInputs	= 0b00000000
+	.set	TRUE	= 0b00000001
+	.set	FALSE	= 0b00000000
+	;; ==================== General PORT related things ====================
+	.set	allHigh			= 0b11111111
+	.set	allLow			= 0b00000000
+	.set	portBPullupDownValues	= 0b00000000
+	;; =================== For Interrupt on Clock Signal ===================
+	;; To enable int2 (pin PB2)
+	.equ	int2En = 0b00100000
+	;; =============================== Timing ==============================
+	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	;; ======================= LCD Related Constants =======================
 	.set	lcdLine1	= 0b00000000
 	.set	lcdLine2Half	= 0x7f ; 127, lcdLine2 should equal this after right shift.
@@ -50,7 +59,7 @@
 	.set	shiftDisplayRight	= 0b00011100
 
 
-	;; ======================== Start data segment! ========================
+	;; ======================== Start Data Segment! ========================
 	;; =====================================================================
 	.dseg
 	;; Sould only be changed by SWITCH_LCD_LINE (after INIT_LCD.)
@@ -60,9 +69,10 @@
 	currentMaxLineLen:	.byte 1
 	;; Stores the current number of characters scrolled in from the right.
 	currentScrollLen:	.byte 1
-
+	;; Stores the current second (in the current minute.)
+	secondsInCurrentMinute:	.byte 1
 	
-	;; ======================== Start code segment! ========================
+	;; ======================== Start Code Segment! ========================
 	;; =====================================================================
 	.cseg			
 	;; =====================================================================
@@ -110,11 +120,38 @@ MAIN:
 
 	
 START_OF_MAIN:
-	ldi	r16, 0b01000000
-	ldi	r17, 0b00100111	; Maybe have a menu option to aulter this vlaue?
-	call	BUSY_WAIT
-	call	SCROLL_LCD
+;; 	ldi	r16, 0b01000000
+;; 	ldi	r17, 0b00100111	; Maybe have a menu option to aulter this vlaue?
+;; 	call	BUSY_WAIT
+
+;; 	ldi	r30,	low(2*secondsInCurrentMinute)
+;; 	ldi	r31,	high(2*secondsInCurrentMinute)
+;; 	ld	r16,	Z
+;; 	call	ODD_OR_EVEN
+;; 	ldi	r17,	TRUE
+;; 	cp	r16, r17
+;; 	brne	NO_SCROLL	
+;; 	call	SCROLL_LCD
+;; NO_SCROLL:	
 	rjmp	START_OF_MAIN
+
+
+ODD_OR_EVEN:
+	push	r17
+	push	r18
+	mov	r17, r16
+	lsr	r16		; r16 >> 1
+	ldi	r18, 2
+	cp	r17, r16
+	BRNE	NOT_EVEN
+	ldi	r16, FALSE
+	jmp	ODD_OR_EVEN_RET
+NOT_EVEN:
+	ldi	r16, TRUE
+ODD_OR_EVEN_RET:
+	pop	r18
+	pop	r17
+	ret
 
 
 	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
@@ -255,10 +292,23 @@ SCROLL_LCD_PROPER_RET:
 	
 INIT:
 	call	DISABLE_JTAG
-	ldi	r16, low(setDDRToAllOutputs)
-	call	SET_DDRA	; SET_DDRA doesn't change r16
+	
+	ldi	r16, low(allHigh) ; Set the following DDRs to outputs.
+	call	SET_DDRA	; SET_DDRA doesn't change r16.
 	call	SET_DDRC
+	call	SET_DDRD
+	; Set portD to all low (the relay is connected to this port.)
+	ldi	r16, low(allLow)
+	call	SET_PortD_HIGH_OR_LOW
+	
+	ldi	r16, low(allLow) ; Set the following DDRs to inputs.
+	;; ldi	r17, low(portBPullupDownValues)
+	call	SET_DDRB
+	ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
+	call	SET_PortB_HIGH_OR_LOW
+	
 	call	INIT_LCD
+	call	ENABLE_INT2
 	ret
 
 
@@ -282,16 +332,50 @@ DISABLE_JTAG:			;===============================================
 	ret
 
 
-	;; Set the data direction registers. These may be changed latter
-	;; depending on what is attached to the pins.
+	;; Set the data direction registers and set pull up/down resistors.
+	;; These may be changed latter depending on what is attached to the
+	;; pins.
 SET_DDRA:
 	out	DDRA, r16
 	ret
 
 
+SET_DDRB:
+	out	DDRB, r16
+	ret
+
+
 SET_DDRC:
 	out	DDRC, r16
-	ret	
+	ret
+
+
+SET_DDRD:
+	out	DDRD, r16
+	ret
+
+
+	;; The SET_PortX_HIGH_OR_LOW rutines can be used to set pull up/down
+	;; resistors when the port is set as an input or they can be used set
+	;; the output of the port high / low
+SET_PortA_HIGH_OR_LOW:
+	out	PortA, r16
+	ret
+
+
+SET_PortB_HIGH_OR_LOW:
+	out	PortB, r16
+	ret
+
+
+SET_PortC_HIGH_OR_LOW:
+	out	PortC, r16
+	ret
+
+
+SET_PortD_HIGH_OR_LOW:
+	out	PortD, r16
+	ret
 
 	
 INIT_LCD:
@@ -385,6 +469,13 @@ BUSY_WAIT_LOOP_2_START:
 	ret
 
 
+ENABLE_INT2:			; Note that this rutine does enable interupts (sei)
+	push	r16
+	ldi	r16, low(int2En)
+	out	GICR, r16	; Set external interrupt 2 to be enabled
+	pop	r16
+	ret
+
 	;; =====================================================================
 	;; =============================== ISRs ================================
 RESET:
@@ -414,7 +505,23 @@ EE_RDY:		; EEPROM Ready Handler
 ANA_COMP:	; Analog Comparator Handler
 TWSI:		; Two-wire Serial Interface Handler
 EXT_INT2:	; IRQ2 Handler Note that another second has passed
-	;; inc	secondCount	; Time flies :O :'(
+	ldi	r16, low(allHigh)
+	call	SET_PortD_HIGH_OR_LOW
+	;; push	r30
+	;; push	r31
+	;; push	r16
+	;; ldi	r30,	low(2*secondsInCurrentMinute)
+	;; ldi	r31,	high(2*secondsInCurrentMinute)
+	;; ld	r16,	Z
+	;; We don't want to spend too long in this ISR so we check
+	;; secondsInCurrentMinut arcMinute elsewhere
+	;; inc	r16,
+	;; st	Z, r16
+	;; pop	r16
+	;; pop	r31
+	;; pop	r30
 	reti
+	
 TIM0_COMP:	; Timer0 Compare Handler
 SPM_RDY:	; Store Program Memory Ready Handler;
+
