@@ -1,12 +1,12 @@
 	;; SBCPowerOnTimer
 	;; Note that we use a callee saved convention for registers and that a
-	;; function should only save a register if it uses it. Of course if a
-	;; function takes an argument then the register will need to be saved by
-	;; the caller if it is used by the caller for something else. Arguments
-	;; should start from r16 unless they can't (for example when using Z.)
-	;; We note that AT-PAn -> LCD-Dn for n = 0 up to 7 and where -> means is
-	;; connected to. We note also that AT-PC7 -> LCD-RS, AT-PC6 -> LCD-RW
-	;; and AT-PC5 -> LCD-E.
+	;; subroutine should only save a register if it uses it. Of course if a
+	;; subroutine takes an argument then the register will need to be saved
+	;; by the caller if it is used by the caller for something else. 
+	;; Arguments should start from r16 unless they can't (for example when
+	;; using Z.) We note that AT-PAn -> LCD-Dn for n = 0 up to 7 and
+	;; where -> means is connected to. We note also that AT-PC7 -> LCD-RS,
+	;; AT-PC6 -> LCD-RW and AT-PC5 -> LCD-E.
 	
 	.nolist			; Don't include in the .lst file if we ask the
 				; assembler to generate one.
@@ -25,7 +25,17 @@
 	;; ==================== General PORT related things ====================
 	.set	allHigh			= 0b11111111
 	.set	allLow			= 0b00000000
-	.set	portBPullupDownValues	= 0b00000000
+;	.set	portBPullupDownValues	= 0b00000000
+	;; =============================== Inputs ==============================
+	.set	enterButton		= 0b00000001 ; -> PB0
+	.set	upButton		= 0b00000010 ; -> PB1
+	.set	downButton		= 0b00001000 ; -> PB3
+	.set	leftButton		= 0b00010000 ; -> PB4
+	.set	rightButton		= 0b00100000 ; -> PB5
+	;	.set	int2Input		= 0b00000100 ; Int 2 is PB2
+	.set	notInt2Input		= 0b11111011 ; For when we don't want int2.
+	;; ============================== Outputs ==============================
+	.set	enRelay			= 0b10000000 ; Relay is connected to PD7.
 	;; =================== For Interrupt on Clock Signal ===================
 	;; To enable int2 (pin PB2)
 	.equ	int2En = 0b00100000
@@ -41,13 +51,13 @@
 	.set	halfDDRAMSize	= 0x29
 	;; .set	DDRAMSize	= 0x50
 	.set	displayWidth	= 0b00010000 ; The screen is 16 characters long.
-	;; == Display control siginals E (enable), RW (read write), RS (register select.) ==
+	;; ==| Display control siginals E (enable), RW (read write), RS (register select.) |==
 	.set	enable		  = 0b00100000
 	.set	enableRead	  = 0b01000000
 	.set	enableWrite	  = 0b00000000
 	.set	registerSelectOn	= 0b10000000
 	.set	registerSelectOff	= 0b00000000
-	;; == Display commands (the position of the first 1 indicates the command.) ==
+	;; ==| Display commands (the position of the first 1 indicates the command.) |==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.set	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
 	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
@@ -62,6 +72,7 @@
 	;; ======================== Start Data Segment! ========================
 	;; =====================================================================
 	.dseg
+	;; ==| LCD related variables |==
 	;; Sould only be changed by SWITCH_LCD_LINE (after INIT_LCD.)
 	currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
 	;; Stores the length of the longest line on the display.
@@ -71,6 +82,13 @@
 	currentScrollLen:	.byte 1
 	;; Stores the current second (in the current minute.)
 	secondsInCurrentMinute:	.byte 1
+	;; ==| Backlight related variables |==
+	;; Should be set to TRUE if the back light is off and FALSE otherwise.
+	backLightOff:		.byte 1
+	;; Stores the number of minutes since a button was pressed (used to
+	;; automatically turn off the screen back light.)
+	minutesIdle:		.byte 1
+
 	
 	;; ======================== Start Code Segment! ========================
 	;; =====================================================================
@@ -109,8 +127,33 @@
 	;; =====================================================================
 	;; ========================= Main Code Section =========================
 MAIN:
+	;; ldi	r30, low(2*helloStr) ; Load address of string.
+	;; ldi	r31, high(2*helloStr)
+	;; call	WRITE_TO_LCD
+	
+	;; call	SWITCH_LCD_LINE
+	;; ldi	r30, low(2*helloStr2nd) ; Load address of string.
+	;; ldi	r31, high(2*helloStr2nd)
+	;; call	WRITE_TO_LCD
+
+;;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;;; CALL RUTINE TO SET TIME HERE. DON'T RETURN UNTIL TIME SET!!!!!!!!!!!!!!!!!!!
+;;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	
+MAIN____START_OF_MAIN:
+	;; ldi	r16, 0
+	;; call	SET_PortD_HIGH_OR_LOW
+
+	
+	;	if(buttonPressed())
+	call	GET_BUTTON_STATE
+	cpi	r16, 0
+	brne	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
+	;	{
+	;		mainMenu()
+
 	ldi	r30, low(2*helloStr) ; Load address of string.
-	ldi	r31, high(2*helloStr)	
+	ldi	r31, high(2*helloStr)
 	call	WRITE_TO_LCD
 	
 	call	SWITCH_LCD_LINE
@@ -119,7 +162,16 @@ MAIN:
 	call	WRITE_TO_LCD
 
 	
-START_OF_MAIN:
+	rjmp	MAIN____START_OF_MAIN
+	;	}
+	;	else
+MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
+	ldi	r16, enRelay
+	call	SET_PortD_HIGH_OR_LOW
+;	{
+;		displayTimeAndNextActivation()
+;	}
+	
 ;; 	ldi	r16, 0b01000000
 ;; 	ldi	r17, 0b00100111	; Maybe have a menu option to aulter this vlaue?
 ;; 	call	BUSY_WAIT
@@ -132,8 +184,18 @@ START_OF_MAIN:
 ;; 	cp	r16, r17
 ;; 	brne	NO_SCROLL	
 ;; 	call	SCROLL_LCD
-;; NO_SCROLL:	
-	rjmp	START_OF_MAIN
+;; NO_SCROLL:
+	rjmp	MAIN____START_OF_MAIN
+
+
+GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
+	in	r16, PinB
+	andi	r16, low(notInt2Input)
+	ret
+	
+	
+;MAIN_MENU:			
+;	ret
 
 
 ODD_OR_EVEN:
@@ -143,12 +205,12 @@ ODD_OR_EVEN:
 	lsr	r16		; r16 >> 1
 	ldi	r18, 2
 	cp	r17, r16
-	BRNE	NOT_EVEN
+	BRNE	ODD_OR_EVEN____NOT_EVEN
 	ldi	r16, FALSE
-	jmp	ODD_OR_EVEN_RET
-NOT_EVEN:
+	jmp	ODD_OR_EVEN____RET
+ODD_OR_EVEN____NOT_EVEN:
 	ldi	r16, TRUE
-ODD_OR_EVEN_RET:
+ODD_OR_EVEN____RET:
 	pop	r18
 	pop	r17
 	ret
@@ -178,14 +240,14 @@ WRITE_TO_LCD:
 	push	r18		; Used to count str len, where str is pointed to by Z.
 	
 	clr	r18
-START_WRITE_TO_LCD:
+WRITE_TO_LCD____START_WRITE_TO_LCD:
 	lpm	r16, Z+
 	inc	r18
 	ldi	r17, 0b0
 	cp	r16, r17		; Have we hit the null byte?
-	breq    END_WRITE_TO_LCD
+	breq    WRITE_TO_LCD____END_WRITE_TO_LCD
 	cpi	r18, halfDDRAMSize	; Have we reached the end of the display ram for this line.
-	brge	END_WRITE_TO_LCD
+	brge	WRITE_TO_LCD____END_WRITE_TO_LCD
 	;; Output character command.
 	out	PortA, r16
 	ldi	r16, low(registerSelectOn)	; Set RS control signal
@@ -198,18 +260,18 @@ START_WRITE_TO_LCD:
 	call	BUSY_WAIT
 	ldi	r16, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r16
-	jmp	START_WRITE_TO_LCD
-END_WRITE_TO_LCD:
+	jmp	WRITE_TO_LCD____START_WRITE_TO_LCD
+WRITE_TO_LCD____END_WRITE_TO_LCD:
 	dec	r18		; We inc'ed for '\0'
 	ldi	r30, low(2*currentMaxLineLen)
 	ldi	r31, high(2*currentMaxLineLen)
 	ld	r16, Z
 	cp	r18, r16
-	brlo	SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
+	brlo	WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
 	st	Z, r18		; Store str len at line2CurrentStrLen.
-SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
+WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
 	
-AFTER_SET_LCD_LINE_LEN:
+WRITE_TO_LCD____AFTER_SET_LCD_LINE_LEN:
 	pop	r18
 	pop	r17
 	pop	r16
@@ -246,10 +308,10 @@ SCROLL_LCD:
 	ld	r16, Z
 	dec	r16		; No branch if less than or equal.
 	cpi	r16, displayWidth	; Will scroll if both lines are of length 0 (This shouldn't be the case!)
-	brlo	NO_SCROLL_NEEDED
+	brlo	SCROLL_LCD____NO_SCROLL_NEEDED
 	call	SCROLL_LCD_PROPER
 
-NO_SCROLL_NEEDED:
+SCROLL_LCD____NO_SCROLL_NEEDED:
 	
 	pop	r31
 	pop	r30
@@ -268,22 +330,22 @@ SCROLL_LCD_PROPER:
 	ld	r17, Z		; Load *currentScrollLen into r17
 	subi	r16, displayWidth ; We've already made sure r16 < displayWidth in SCROLL_LCD.
 	cp	r17, r16
-	breq	FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
+	breq	SCROLL_LCD_PROPER____FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
 
 	ldi	r16, shiftDisplayLeft
 	call	SEND_LCD_INSTRUCTION
 
 	inc	r17		; Inc *currentScrollLen
-	jmp	SCROLL_LCD_PROPER_RET
+	jmp	SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET
 
-FAST_SCROLL_BACK:
+SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	ldi	r16, shiftDisplayRight
 	call	SEND_LCD_INSTRUCTION
 	dec	r17
 	cpi	r17, 0b0
-	brne	FAST_SCROLL_BACK
+	brne	SCROLL_LCD_PROPER____FAST_SCROLL_BACK
 
-SCROLL_LCD_PROPER_RET:
+SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
 	st	Z, r17		; Store *currentScrollLen
 	pop	r17
 	pop	r16
@@ -303,7 +365,7 @@ INIT:
 	
 	ldi	r16, low(allLow) ; Set the following DDRs to inputs.
 	;; ldi	r17, low(portBPullupDownValues)
-	call	SET_DDRB
+	call	SET_DDRB	 ; Port B is used only for inputs.
 	ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
 	call	SET_PortB_HIGH_OR_LOW
 	
@@ -444,25 +506,25 @@ BUSY_WAIT:			;===============================================
 	push	r30
 	push	r29
 	clr	r31
-BUSY_WAIT_LOOP_0_START:
+BUSY_WAIT____LOOP_0_START:
 	inc	r31
 
 	clr	r30
-BUSY_WAIT_LOOP_1_START:
+BUSY_WAIT____LOOP_1_START:
 	inc	r30
 
 	clr	r29
-BUSY_WAIT_LOOP_2_START:
+BUSY_WAIT____LOOP_2_START:
 	inc	r29
 
 	cp	r29, r16
-	brne	BUSY_WAIT_LOOP_2_START
+	brne	BUSY_WAIT____LOOP_2_START
 
 	cp	r30, r16
-	brne	BUSY_WAIT_LOOP_1_START
+	brne	BUSY_WAIT____LOOP_1_START
 	
 	cp	r31, r17
-	brne	BUSY_WAIT_LOOP_0_START
+	brne	BUSY_WAIT____LOOP_0_START
 	pop	r29	
 	pop	r30
 	pop	r31
@@ -505,8 +567,8 @@ EE_RDY:		; EEPROM Ready Handler
 ANA_COMP:	; Analog Comparator Handler
 TWSI:		; Two-wire Serial Interface Handler
 EXT_INT2:	; IRQ2 Handler Note that another second has passed
-	ldi	r16, low(allHigh)
-	call	SET_PortD_HIGH_OR_LOW
+;	ldi	r16, low(allHigh) ;
+	;call	SET_PortD_HIGH_OR_LOW
 	;; push	r30
 	;; push	r31
 	;; push	r16
