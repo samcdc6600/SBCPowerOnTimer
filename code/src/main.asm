@@ -33,7 +33,8 @@
 	.set	leftButton		= 0b00010000 ; -> PB4
 	.set	rightButton		= 0b00100000 ; -> PB5
 	;	.set	int2Input		= 0b00000100 ; Int 2 is PB2
-	.set	notInt2Input		= 0b11111011 ; For when we don't want int2.
+;	.set	notInt2Input		= 0b11111011 ; For when we don't want int2.
+	.set	int2Pin			= 0b00000100 ; For when we don't want int2 (follow with neg.)
 	;; ============================== Outputs ==============================
 	.set	enRelay			= 0b10000000 ; Relay is connected to PD7.
 	;; =================== For Interrupt on Clock Signal ===================
@@ -139,6 +140,21 @@ MAIN:
 ;;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;;; CALL RUTINE TO SET TIME HERE. DON'T RETURN UNTIL TIME SET!!!!!!!!!!!!!!!!!!!
 ;;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+	ldi	r30, low(2*helloStr) ; Load address of string.
+	ldi	r31, high(2*helloStr)
+	call	WRITE_TO_LCD
+	
+	call	SWITCH_LCD_LINE
+	ldi	r30, low(2*helloStr2nd) ; Load address of string.
+	ldi	r31, high(2*helloStr2nd)
+	call	WRITE_TO_LCD
+
+
+	ldi	r16, 0b00011111
+	ldi	r17, 0b00011111
+	call	BUSY_WAIT
+	
 	
 MAIN____START_OF_MAIN:
 	;; ldi	r16, 0
@@ -152,21 +168,14 @@ MAIN____START_OF_MAIN:
 	;	{
 	;		mainMenu()
 
-	ldi	r30, low(2*helloStr) ; Load address of string.
-	ldi	r31, high(2*helloStr)
-	call	WRITE_TO_LCD
-	
-	call	SWITCH_LCD_LINE
-	ldi	r30, low(2*helloStr2nd) ; Load address of string.
-	ldi	r31, high(2*helloStr2nd)
-	call	WRITE_TO_LCD
 
+call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 
 	
 	rjmp	MAIN____START_OF_MAIN
 	;	}
 	;	else
 MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
-	ldi	r16, enRelay
+;	ldi	r16, enRelay
 	call	SET_PortD_HIGH_OR_LOW
 ;	{
 ;		displayTimeAndNextActivation()
@@ -188,9 +197,47 @@ MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 	rjmp	MAIN____START_OF_MAIN
 
 
+	;; Returns inverted state of Port B (Port B pull up's are set but we
+	;; want 1's for button presses) with int2 (PB2) masked out.
 GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
-	in	r16, PinB
-	andi	r16, low(notInt2Input)
+	push	r17
+	push	r18
+	push	r19
+	push	r20
+	push	r21
+	
+	in	r20, PinB	  ; Load A.
+	ori	r20, low(int2Pin) ; Mask out clock signal (set to high.)
+	;; We want to invert the button inputs so that a 1 represents a
+	;; depressed button. This will eat some cycle but will also make the
+	;; rest of the code easier to understand and since button presses happen
+	;; relatively infrequently in general it's seen as acceptable to wast a
+	;; hand full of instructions here.
+	;; Our Atmega doesn't have an xor instruction so we must simulate one.
+	;; We must use the equation:
+	;; A XOR B = (NOT(A) AND B) OR (A AND NOT(B))
+	;; Since we don't have a not instruction either we must use:
+	;; NOT(A) = (-1) - A
+	;; https://stackoverflow.com/questions/32018545/how-to-xor-on-a-cpu-that-doesnt-have-an-xor-instruction
+	ldi	r17, low(allHigh) ; Load B.
+	mov	r18, r20	  ; R20 (used for left of OR) and r18 are A.
+	mov	r21, r17	  ; R17 (used for left of OR) and r21 are B.
+	;; 
+	ldi	r16, low(allHigh); -1
+	sub	r16, r20	; (-1) - A.	R16 = NOT(A)
+	and	r16, r17	; NOT(A) AND B
+	;; 
+	ldi	r19, low(allHigh); -1
+	sub	r19, r21	; (-1) - B.	R19 = NOT(B)
+	and	r18, r19	; A AND NOT(B)
+	;; 
+	or	r16, r18	; (NOT(A) AND B) OR (A AND NOT(B))
+
+	pop	r21
+	pop	r20
+	pop	r19
+	pop	r18
+	pop	r17
 	ret
 	
 	
@@ -366,7 +413,8 @@ INIT:
 	ldi	r16, low(allLow) ; Set the following DDRs to inputs.
 	;; ldi	r17, low(portBPullupDownValues)
 	call	SET_DDRB	 ; Port B is used only for inputs.
-	ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
+	;ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
+	ldi	r16, low(allHigh) ; Set pull up resistors.
 	call	SET_PortB_HIGH_OR_LOW
 	
 	call	INIT_LCD
@@ -466,6 +514,8 @@ INIT_LCD:
 
 
 SEND_LCD_INSTRUCTION:
+	push	r17
+	
 	out	PortA, r16
 	;; Clear control signals (high 3 bit's of port C.)
 	ldi	r16, 0b0
@@ -473,11 +523,13 @@ SEND_LCD_INSTRUCTION:
 	;; toggle enable bit to send instruction.
 	ldi	r16, low(Enable)
 	out	PortC, r16	; Send instruction to display.
-	;; ldi	r16, 0b00000011	; Add a small delay to make sure instruction is sent.
-	;; ldi	r17, 0b00000001
+	ldi	r16, 0b00000001	; Add a small delay to make sure instruction is sent.
+	ldi	r17, 0b00000001
 	call	BUSY_WAIT
 	ldi	r16, 0b0
 	out	PortC, r16	; Stop sending.
+
+	pop	r17
 	ret
 
 
