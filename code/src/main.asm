@@ -121,6 +121,12 @@
 
 	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
 	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
+
+	mainMenuSetTimeStr:	.db "- Set Time -", 0
+	mainMenuSetDateStr:	.db "- Set Date -                 ", 0
+	mainMenuSetActivationTimeStr:	.db "- Set Activation Time -", 0
+	mainMenuDeleteActivationTimeStr:	.db "- Delete Activation Time -", 0
+	mainMenuSetBrightnessStr:	.db "- Set Brightness -", 0
 	;; helloStr:	.db "I Love You So I Do", 0, 0 ; Extra 0 so bytes are even.
 	;; helloStr2nd:	.db "~~~~~", 0, 0
 
@@ -157,29 +163,20 @@ MAIN:
 	
 	
 MAIN____START_OF_MAIN:
-	;; ldi	r16, 0
-	;; call	SET_PortD_HIGH_OR_LOW
-
-	
-	;	if(buttonPressed())
 	call	GET_BUTTON_STATE
 	cpi	r16, 0
-	brne	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
-	;	{
-	;		mainMenu()
+	breq	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
+	call	MAIN_MENU
 
-
-call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 
-	
+call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 	
 	rjmp	MAIN____START_OF_MAIN
-	;	}
-	;	else
+
+	
 MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 ;	ldi	r16, enRelay
 	call	SET_PortD_HIGH_OR_LOW
-;	{
-;		displayTimeAndNextActivation()
-;	}
+	
+
 	
 ;; 	ldi	r16, 0b01000000
 ;; 	ldi	r17, 0b00100111	; Maybe have a menu option to aulter this vlaue?
@@ -209,10 +206,11 @@ GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
 	in	r20, PinB	  ; Load A.
 	ori	r20, low(int2Pin) ; Mask out clock signal (set to high.)
 	;; We want to invert the button inputs so that a 1 represents a
-	;; depressed button. This will eat some cycle but will also make the
-	;; rest of the code easier to understand and since button presses happen
-	;; relatively infrequently in general it's seen as acceptable to wast a
-	;; hand full of instructions here.
+	;; depressed button. This will eat some cycles (we calculate the
+	;; overhead to be 30 cycles) but will also make the rest of the code
+	;; easier to understand and since button presses happen relatively
+	;; infrequently in general it's seen as acceptable to wast some
+	;; instructions here.
 	;; Our Atmega doesn't have an xor instruction so we must simulate one.
 	;; We must use the equation:
 	;; A XOR B = (NOT(A) AND B) OR (A AND NOT(B))
@@ -239,28 +237,49 @@ GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
 	pop	r18
 	pop	r17
 	ret
+
+
+MAIN_MENU:
+
+
+	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSetDateStr)
+	call	WRITE_TO_LCD
+	
+	call	SWITCH_LCD_LINE
+	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSetDateStr)
+	call	WRITE_TO_LCD
+
+
+	ldi	r16, 0b00011111
+	ldi	r17, 0b00011111
+	call	BUSY_WAIT
+	
+	
+	ret
 	
 	
 ;MAIN_MENU:			
 ;	ret
 
 
-ODD_OR_EVEN:
-	push	r17
-	push	r18
-	mov	r17, r16
-	lsr	r16		; r16 >> 1
-	ldi	r18, 2
-	cp	r17, r16
-	BRNE	ODD_OR_EVEN____NOT_EVEN
-	ldi	r16, FALSE
-	jmp	ODD_OR_EVEN____RET
-ODD_OR_EVEN____NOT_EVEN:
-	ldi	r16, TRUE
-ODD_OR_EVEN____RET:
-	pop	r18
-	pop	r17
-	ret
+;ODD_OR_EVEN:
+;	push	r17
+;	push	r18
+;	mov	r17, r16
+;	lsr	r16		; r16 >> 1
+;	ldi	r18, 2
+;	cp	r17, r16
+;	BRNE	ODD_OR_EVEN____NOT_EVEN
+;	ldi	r16, FALSE
+;	jmp	ODD_OR_EVEN____RET
+;ODD_OR_EVEN____NOT_EVEN:
+;	ldi	r16, TRUE
+;ODD_OR_EVEN____RET:
+;	pop	r18
+;	pop	r17
+;	ret
 
 
 	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
