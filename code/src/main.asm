@@ -60,14 +60,16 @@
 	.set	registerSelectOff	= 0b00000000
 	;; ==| Display commands (the position of the first 1 indicates the command.) |==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
-	.set	functionSet_data  = 0b00111000 ; that is bits 4, 3 and 2.
+	.set	functionSetData  = 0b00111000 ; that is bits 4, 3 and 2.
 	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
-	.set	displayOn_data    = 0b00001111 ; That is bits 2, 1 and 0
+	.set	displayOnData    = 0b00001111 ; That is bits 2, 1 and 0
 	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
 	.set	setDDRAMAddressTo2ndLine	  = 0b11000000
 	;; S/C (display shift (1) / cursor move), R/L (shift to the right (1) / shift to the left)
 	.set	shiftDisplayLeft	= 0b00011000
 	.set	shiftDisplayRight	= 0b00011100
+	;; Clear display
+	.set	clearDisplay	= 0b00000001
 
 
 	;; ======================== Start Data Segment! ========================
@@ -157,9 +159,9 @@ MAIN:
 	call	WRITE_TO_LCD
 
 
-	ldi	r16, 0b00011111
-	ldi	r17, 0b00011111
-	call	BUSY_WAIT
+;	ldi	r16, 0b00011111	
+;	ldi	r17, 0b00011111
+;	call	BUSY_WAIT
 	
 	
 MAIN____START_OF_MAIN:
@@ -169,6 +171,7 @@ MAIN____START_OF_MAIN:
 	
 	call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 	
 	call	MAIN_MENU
+	call	CLEAR_LCD
 	
 	rjmp	MAIN____START_OF_MAIN
 
@@ -198,46 +201,6 @@ MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 	;; Returns inverted state of Port B (Port B pull up's are set but we
 	;; want 1's for button presses) with int2 (PB2) masked out.
 GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
-	;; push	r17
-	;; push	r18
-	;; push	r19
-	;; push	r20
-	;; push	r21
-	
-	;; in	r20, PinB	  ; Load A.
-	;; ori	r20, low(int2Pin) ; Mask out clock signal (set to high.)
-	;; ;; We want to invert the button inputs so that a 1 represents a
-	;; ;; depressed button. This will eat some cycles (we calculate the
-	;; ;; overhead to be 30 cycles) but will also make the rest of the code
-	;; ;; easier to understand and since button presses happen relatively
-	;; ;; infrequently in general it's seen as acceptable to wast some
-	;; ;; instructions here.
-	;; ;; Our Atmega doesn't have an xor instruction so we must simulate one.
-	;; ;; We must use the equation:
-	;; ;; A XOR B = (NOT(A) AND B) OR (A AND NOT(B))
-	;; ;; Since we don't have a not instruction either we must use:
-	;; ;; NOT(A) = (-1) - A
-	;; ;; https://stackoverflow.com/questions/32018545/how-to-xor-on-a-cpu-that-doesnt-have-an-xor-instruction
-	;; ldi	r17, low(allHigh) ; Load B.
-	;; mov	r18, r20	  ; R20 (used for left of OR) and r18 are A.
-	;; mov	r21, r17	  ; R17 (used for left of OR) and r21 are B.
-	;; ;; 
-	;; ldi	r16, low(allHigh); -1
-	;; sub	r16, r20	; (-1) - A.	R16 = NOT(A)
-	;; and	r16, r17	; NOT(A) AND B
-	;; ;; 
-	;; ldi	r19, low(allHigh); -1
-	;; sub	r19, r21	; (-1) - B.	R19 = NOT(B)
-	;; and	r18, r19	; A AND NOT(B)
-	;; ;; 
-	;; or	r16, r18	; (NOT(A) AND B) OR (A AND NOT(B))
-
-	;; pop	r21
-	;; pop	r20
-	;; pop	r19
-	;; pop	r18
-	;; pop	r17
-
 	in	r16, PinB	  ; Load A.
 	ori	r16, low(int2Pin) ; Mask out clock signal (set to high.)
 	com	r16		  ; One's complement (inverts all bits.)
@@ -245,8 +208,6 @@ GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
 
 
 MAIN_MENU:
-
-
 	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
 	ldi	r31, high(2*mainMenuSetDateStr)
 	call	WRITE_TO_LCD
@@ -256,35 +217,11 @@ MAIN_MENU:
 	ldi	r31, high(2*mainMenuSetDateStr)
 	call	WRITE_TO_LCD
 
-
 	ldi	r16, 0b00011111
 	ldi	r17, 0b00011111
 	call	BUSY_WAIT
 	
-	
 	ret
-	
-	
-;MAIN_MENU:			
-;	ret
-
-
-;ODD_OR_EVEN:
-;	push	r17
-;	push	r18
-;	mov	r17, r16
-;	lsr	r16		; r16 >> 1
-;	ldi	r18, 2
-;	cp	r17, r16
-;	BRNE	ODD_OR_EVEN____NOT_EVEN
-;	ldi	r16, FALSE
-;	jmp	ODD_OR_EVEN____RET
-;ODD_OR_EVEN____NOT_EVEN:
-;	ldi	r16, TRUE
-;ODD_OR_EVEN____RET:
-;	pop	r18
-;	pop	r17
-;	ret
 
 
 	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
@@ -321,9 +258,6 @@ WRITE_TO_LCD____START_WRITE_TO_LCD:
 	brge	WRITE_TO_LCD____END_WRITE_TO_LCD
 	;; Output character command.
 	out	PortA, r16
-	ldi	r16, low(registerSelectOn)	; Set RS control signal
-	out	PortC, r16
-	;; Set E and RS control siginals.
 	ldi	r16, (low(registerSelectOn) | low(enable))
 	out	PortC, r16
 	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
@@ -332,20 +266,8 @@ WRITE_TO_LCD____START_WRITE_TO_LCD:
 	ldi	r16, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r16
 	jmp	WRITE_TO_LCD____START_WRITE_TO_LCD
-;; COMMENTED OUT ===============================================================
-;; WRITE_TO_LCD____END_WRITE_TO_LCD:
-;; 	dec	r18		; We inc'ed for '\0'
-;; 	ldi	r30, low(2*currentMaxLineLen)
-;; 	ldi	r31, high(2*currentMaxLineLen)
-;; 	ld	r16, Z
-;; 	cp	r18, r16
-;; 	brlo	WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
-;; 	st	Z, r18		; Store str len at line2CurrentStrLen.
-;; WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
-	
-;; WRITE_TO_LCD____AFTER_SET_LCD_LINE_LEN:
-;; COMMENTED OUT ===============================================================
 WRITE_TO_LCD____END_WRITE_TO_LCD:
+	
 	pop	r18
 	pop	r17
 	pop	r16
@@ -421,6 +343,29 @@ SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 
 SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
 	st	Z, r17		; Store *currentScrollLen
+	pop	r17
+	pop	r16
+	ret
+
+
+CLEAR_LCD:
+	push	r16
+	push	r17
+	;; /| RS | R/W(hat) | DB7 | DB6 | DB5 | DB4 | DB3 | DB2 | DB1 | DB0 |\
+	;; {|---------------------------------------------------------------|}
+	;; \| 0  | 0        | 0   | 0   | 0   | 0   | 0   | 0   | 0   | 1   |/
+
+	ldi	r16, low(clearDisplay) ; clear display command
+	out	PortA, r16
+	;; Set E and RS control siginals.
+	ldi	r16, (low(registerSelectOff) | low(enable))
+	out	PortC, r16
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r16, 0b00000001
+	call	BUSY_WAIT
+	ldi	r16, low(registerSelectOff)	; Clear E control signal
+	out	PortC, r16
+
 	pop	r17
 	pop	r16
 	ret
@@ -519,7 +464,7 @@ INIT_LCD:
 	;; Output display function set command.
 	;; Set display parameters (DL (bus width), N (number of lines),
 	;; F (font size)). We set the state of the data pins (port A) high first.
-	ldi  r16, functionSet_data ; SEND_LCD_INSTRUCTION takes r16 as an argument.
+	ldi  r16, functionSetData ; SEND_LCD_INSTRUCTION takes r16 as an argument.
 	call SEND_LCD_INSTRUCTION
 	call TURN_ON_DISPLAY
 	;; It will simplify the code to know the current LCD line (there may be
@@ -564,7 +509,7 @@ SEND_LCD_INSTRUCTION:
 TURN_ON_DISPLAY:
 	push	r16
 	;; Output display on command.
-	ldi	r16, low(displayOn_data)
+	ldi	r16, low(displayOnData)
 	out	PortA, r16
 	;; Clear control siginals.
 	ldi	r16, 0b0
