@@ -70,6 +70,8 @@
 	.set	shiftDisplayRight	= 0b00011100
 	;; Clear display
 	.set	clearDisplay	= 0b00000001
+	;; ================================ Menu ===============================
+	.set	maxMainMenuItems	= 0b00000101 ; There are 5 items in our main menu.
 
 
 	;; ======================== Start Data Segment! ========================
@@ -91,7 +93,7 @@
 	;; Stores the number of minutes since a button was pressed (used to
 	;; automatically turn off the screen back light.)
 	minutesIdle:		.byte 1
-
+	
 	
 	;; ======================== Start Code Segment! ========================
 	;; =====================================================================
@@ -121,14 +123,20 @@
 	jmp   SPM_RDY	; Store Program Memory Ready Handler;
 
 
+	;; ============================== Strings ==============================
+	;; ========================= Main Menu Strings =========================
 	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
 	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
 
+	mainMenuSelectionStr:	.db "~", 0 ; "~" becomes a right facing arrow!
 	mainMenuSetTimeStr:	.db "- Set Time -", 0
-	mainMenuSetDateStr:	.db "- Set Date -                 ", 0
+	mainMenuSetDateStr:	.db "- Set Date -", 0
 	mainMenuSetActivationTimeStr:	.db "- Set Activation Time -", 0
 	mainMenuDeleteActivationTimeStr:	.db "- Delete Activation Time -", 0
 	mainMenuSetBrightnessStr:	.db "- Set Brightness -", 0
+
+	;; ======================== Main Menu Jump Table =======================
+	mainMenuItemsJumpTable:	.dw MAIN_MENU____DISPLAY_ITEM_1, MAIN_MENU____DISPLAY_ITEM_2, MAIN_MENU____DISPLAY_ITEM_3, MAIN_MENU____DISPLAY_ITEM_4, MAIN_MENU____DISPLAY_ITEM_5
 	;; helloStr:	.db "I Love You So I Do", 0, 0 ; Extra 0 so bytes are even.
 	;; helloStr2nd:	.db "~~~~~", 0, 0
 
@@ -169,9 +177,9 @@ MAIN____START_OF_MAIN:
 	cpi	r16, 0
 	breq	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
 	
-	call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 	
+	call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
+
 	call	MAIN_MENU
-	call	CLEAR_LCD
 	
 	rjmp	MAIN____START_OF_MAIN
 
@@ -208,19 +216,153 @@ GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
 
 
 MAIN_MENU:
+	push	r17
+	push	r18
+	push	r19	; Used as menuPos counter.
+	push	r20	; Used as last menuPos counter.
+	push	r30
+	push	r31
+
+	call	CLEAR_LCD
+	;; MAIN_MENU is called after the default display is interrupted by a
+	;; button press. We want to wait a while after this to give the user a
+	;; change to take their finger off of what ever button it was so that we
+	;; dont register a button press.
+	ldi	r17, 0b0011111
+	ldi	r16, 0b0001111
+	call	BUSY_WAIT
+
+	clr	r19		; Set menuPos counter to 0.
+	mov	r20, r19	; Set last menuPos counter to r19 (menuPos).
+
+MAIN_MENU____MENU_LOOP:
+	call	GET_BUTTON_STATE
+	mov	r18, r16	; Check up and down button state. ==============
+	ldi	r17, upButton
+	and	r18, r17
+	cp	r18, r17
+	brne	MAIN_MENU____CHECK_DOWN_BUTTON ; Doesn't set any flags.
+
+	cpi	r19, maxMainMenuItems ; Check to make sure r19 won't go past maxMainMenuItems.
+	breq	MAIN_MENU____SET_MENU_POS_COUNTER_TO_MIN
+	inc	r19			       ; Note that the up button was pressed.
+	jmp	MAIN_MENU____CHECK_DOWN_BUTTON
+MAIN_MENU____SET_MENU_POS_COUNTER_TO_MIN:
+	clr	r19
+;	jmp	MAIN_MENU____MENU_OPTIONS_JUMP_TABLE
+	
+MAIN_MENU____CHECK_DOWN_BUTTON:
+	mov	r18, r16
+	ldi	r17, downButton
+	and	r18, r17
+	cp	r18, r17
+	brne	MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED
+
+	cpi	r19, 0b0	; Make sure r19 won't go below 0.
+	breq	MAIN_MENU____SET_MENU_POS_COUNTER_TO_MAX
+	dec	r19		; Note that the down button was pressed.
+	jmp	MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED
+MAIN_MENU____SET_MENU_POS_COUNTER_TO_MAX:
+	ldi	r19, maxMainMenuItems
+	dec	r19		; MaxMainMenuIterms is 1 past our max value.
+
+MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
+	;; Here we check r19 agains the menu pos counter value that was stored
+	;; in memory last time MAIN_MENU was called. If it has changed we use
+	;; r19 to index into a jump table. Otherwise we exit the MAIN_MENU sub
+	;; rutine.
+	cp	r19, r20
+	breq	MAIN_MENU____SKIP_MENU_UPDATE
+	mov	r20, r19	; Update last menuPos counter.
+
+
+
+
+	mov	r16, r19
+	call	SET_PortD_HIGH_OR_LOW
+	
+
+	lsl	r19		; Multiply by 2.
+	ldi	r30, low(2*mainMenuItemsJumpTable)
+	add	r30, r19
+	ldi	r31, high(2*mainMenuItemsJumpTable)
+	add	r31, r19
+	ijmp			; PC <- Z
+	;; We would use a jump table here but we don't know how to do it using
+	;; our assembler (avra 1.4.2)
+	;; MAIN_MENU____DISPLAY_ITEM1_1
+	;; MAIN_MENU____DISPLAY_ITEM1_2
+	;; MAIN_MENU____DISPLAY_ITEM1_3
+	;; MAIN_MENU____DISPLAY_ITEM1_4
+	;; MAIN_MENU____DISPLAY_ITEM1_5
+
+	
+
+
+
+MAIN_MENU____DISPLAY_ITEM_1:
+
+	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
+	
 	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSetDateStr)
+	ldi	r31, high(2*mainMenuSetTimeStr)
 	call	WRITE_TO_LCD
 	
 	call	SWITCH_LCD_LINE
 	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
 	ldi	r31, high(2*mainMenuSetDateStr)
 	call	WRITE_TO_LCD
+	
+	jmp	MAIN_MENU____EXIT_MENU_UPDATE
+MAIN_MENU____DISPLAY_ITEM_2:
+
+
+	
+
+	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
+	
+	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSetDateStr)
+	call	WRITE_TO_LCD
+	
+	call	SWITCH_LCD_LINE
+	ldi	r30, low(2*mainMenuSetActivationTimeStr) ; Load address of string.
+	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+	call	WRITE_TO_LCD
+	
+	jmp	MAIN_MENU____EXIT_MENU_UPDATE
+MAIN_MENU____DISPLAY_ITEM_3:
+	
+	jmp	MAIN_MENU____EXIT_MENU_UPDATE
+MAIN_MENU____DISPLAY_ITEM_4:
+	
+	jmp	MAIN_MENU____EXIT_MENU_UPDATE
+MAIN_MENU____DISPLAY_ITEM_5:
+	
+	jmp	MAIN_MENU____EXIT_MENU_UPDATE
+	
+	
+
+MAIN_MENU____SKIP_MENU_UPDATE:
+MAIN_MENU____EXIT_MENU_UPDATE:
+	
 
 	ldi	r16, 0b00011111
 	ldi	r17, 0b00011111
 	call	BUSY_WAIT
-	
+
+	jmp	MAIN_MENU____MENU_LOOP
+
+	pop	r31
+	pop	r30
+	pop	r20
+	pop	r19
+	pop	r18
+	pop	r17
 	ret
 
 
@@ -351,6 +493,7 @@ SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
 CLEAR_LCD:
 	push	r16
 	push	r17
+	;; ==============   -~   C L E A R   D I S P L A Y   ~-   ==============
 	;; /| RS | R/W(hat) | DB7 | DB6 | DB5 | DB4 | DB3 | DB2 | DB1 | DB0 |\
 	;; {|---------------------------------------------------------------|}
 	;; \| 0  | 0        | 0   | 0   | 0   | 0   | 0   | 0   | 0   | 1   |/
@@ -365,6 +508,12 @@ CLEAR_LCD:
 	call	BUSY_WAIT
 	ldi	r16, low(registerSelectOff)	; Clear E control signal
 	out	PortC, r16
+	;; We need to wait a while before we can write to the LCD again (we wait
+	;; here since we anticipate that we will almost exclusivly be calling
+	;; this rutine before WRITE_TO_LCD and because it simplifies the code.)
+	ldi	r17, 0b0000111
+	ldi	r16, 0b0000111
+	call	BUSY_WAIT
 
 	pop	r17
 	pop	r16
