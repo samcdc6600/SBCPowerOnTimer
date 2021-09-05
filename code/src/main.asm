@@ -151,7 +151,7 @@ MAIN:
 	ldi	r31, high(2*helloStr)
 	call	WRITE_TO_LCD
 	
-	call	SWITCH_LCD_LINE
+	call	SWITCH_LCD_LINE		;
 	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
 	call	WRITE_TO_LCD
@@ -166,9 +166,10 @@ MAIN____START_OF_MAIN:
 	call	GET_BUTTON_STATE
 	cpi	r16, 0
 	breq	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
+	
+	call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 	
 	call	MAIN_MENU
-
-call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP 	
+	
 	rjmp	MAIN____START_OF_MAIN
 
 	
@@ -197,45 +198,49 @@ MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 	;; Returns inverted state of Port B (Port B pull up's are set but we
 	;; want 1's for button presses) with int2 (PB2) masked out.
 GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
-	push	r17
-	push	r18
-	push	r19
-	push	r20
-	push	r21
+	;; push	r17
+	;; push	r18
+	;; push	r19
+	;; push	r20
+	;; push	r21
 	
-	in	r20, PinB	  ; Load A.
-	ori	r20, low(int2Pin) ; Mask out clock signal (set to high.)
-	;; We want to invert the button inputs so that a 1 represents a
-	;; depressed button. This will eat some cycles (we calculate the
-	;; overhead to be 30 cycles) but will also make the rest of the code
-	;; easier to understand and since button presses happen relatively
-	;; infrequently in general it's seen as acceptable to wast some
-	;; instructions here.
-	;; Our Atmega doesn't have an xor instruction so we must simulate one.
-	;; We must use the equation:
-	;; A XOR B = (NOT(A) AND B) OR (A AND NOT(B))
-	;; Since we don't have a not instruction either we must use:
-	;; NOT(A) = (-1) - A
-	;; https://stackoverflow.com/questions/32018545/how-to-xor-on-a-cpu-that-doesnt-have-an-xor-instruction
-	ldi	r17, low(allHigh) ; Load B.
-	mov	r18, r20	  ; R20 (used for left of OR) and r18 are A.
-	mov	r21, r17	  ; R17 (used for left of OR) and r21 are B.
-	;; 
-	ldi	r16, low(allHigh); -1
-	sub	r16, r20	; (-1) - A.	R16 = NOT(A)
-	and	r16, r17	; NOT(A) AND B
-	;; 
-	ldi	r19, low(allHigh); -1
-	sub	r19, r21	; (-1) - B.	R19 = NOT(B)
-	and	r18, r19	; A AND NOT(B)
-	;; 
-	or	r16, r18	; (NOT(A) AND B) OR (A AND NOT(B))
+	;; in	r20, PinB	  ; Load A.
+	;; ori	r20, low(int2Pin) ; Mask out clock signal (set to high.)
+	;; ;; We want to invert the button inputs so that a 1 represents a
+	;; ;; depressed button. This will eat some cycles (we calculate the
+	;; ;; overhead to be 30 cycles) but will also make the rest of the code
+	;; ;; easier to understand and since button presses happen relatively
+	;; ;; infrequently in general it's seen as acceptable to wast some
+	;; ;; instructions here.
+	;; ;; Our Atmega doesn't have an xor instruction so we must simulate one.
+	;; ;; We must use the equation:
+	;; ;; A XOR B = (NOT(A) AND B) OR (A AND NOT(B))
+	;; ;; Since we don't have a not instruction either we must use:
+	;; ;; NOT(A) = (-1) - A
+	;; ;; https://stackoverflow.com/questions/32018545/how-to-xor-on-a-cpu-that-doesnt-have-an-xor-instruction
+	;; ldi	r17, low(allHigh) ; Load B.
+	;; mov	r18, r20	  ; R20 (used for left of OR) and r18 are A.
+	;; mov	r21, r17	  ; R17 (used for left of OR) and r21 are B.
+	;; ;; 
+	;; ldi	r16, low(allHigh); -1
+	;; sub	r16, r20	; (-1) - A.	R16 = NOT(A)
+	;; and	r16, r17	; NOT(A) AND B
+	;; ;; 
+	;; ldi	r19, low(allHigh); -1
+	;; sub	r19, r21	; (-1) - B.	R19 = NOT(B)
+	;; and	r18, r19	; A AND NOT(B)
+	;; ;; 
+	;; or	r16, r18	; (NOT(A) AND B) OR (A AND NOT(B))
 
-	pop	r21
-	pop	r20
-	pop	r19
-	pop	r18
-	pop	r17
+	;; pop	r21
+	;; pop	r20
+	;; pop	r19
+	;; pop	r18
+	;; pop	r17
+
+	in	r16, PinB	  ; Load A.
+	ori	r16, low(int2Pin) ; Mask out clock signal (set to high.)
+	com	r16		  ; One's complement (inverts all bits.)
 	ret
 
 
@@ -327,17 +332,20 @@ WRITE_TO_LCD____START_WRITE_TO_LCD:
 	ldi	r16, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r16
 	jmp	WRITE_TO_LCD____START_WRITE_TO_LCD
-WRITE_TO_LCD____END_WRITE_TO_LCD:
-	dec	r18		; We inc'ed for '\0'
-	ldi	r30, low(2*currentMaxLineLen)
-	ldi	r31, high(2*currentMaxLineLen)
-	ld	r16, Z
-	cp	r18, r16
-	brlo	WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
-	st	Z, r18		; Store str len at line2CurrentStrLen.
-WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
+;; COMMENTED OUT ===============================================================
+;; WRITE_TO_LCD____END_WRITE_TO_LCD:
+;; 	dec	r18		; We inc'ed for '\0'
+;; 	ldi	r30, low(2*currentMaxLineLen)
+;; 	ldi	r31, high(2*currentMaxLineLen)
+;; 	ld	r16, Z
+;; 	cp	r18, r16
+;; 	brlo	WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE	; Branch if lower
+;; 	st	Z, r18		; Store str len at line2CurrentStrLen.
+;; WRITE_TO_LCD____SKIP_CURRENT_MAX_LINE_LEN_UPDATE:
 	
-WRITE_TO_LCD____AFTER_SET_LCD_LINE_LEN:
+;; WRITE_TO_LCD____AFTER_SET_LCD_LINE_LEN:
+;; COMMENTED OUT ===============================================================
+WRITE_TO_LCD____END_WRITE_TO_LCD:
 	pop	r18
 	pop	r17
 	pop	r16
@@ -355,7 +363,7 @@ SWITCH_LCD_LINE:
 	ldi	r30, low(2*currentLCDLine)
 	ldi	r31, high(2*currentLCDLine)
 	ld	r18, Z
-	com	r18		; One's complement (invert all bits.)
+	com	r18		; One's complement (inverts all bits.)
 	st	Z, r18		; Store current LCD line (r18.)
 	
 	pop	r31
