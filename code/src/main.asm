@@ -136,7 +136,7 @@
 	mainMenuSetBrightnessStr:	.db "- Set Brightness -", 0
 
 	;; ======================== Main Menu Jump Table =======================
-	mainMenuItemsJumpTable:	.dw MAIN_MENU____DISPLAY_ITEM_1, MAIN_MENU____DISPLAY_ITEM_2, MAIN_MENU____DISPLAY_ITEM_3, MAIN_MENU____DISPLAY_ITEM_4, MAIN_MENU____DISPLAY_ITEM_5
+;	mainMenuItemsJumpTable:	.dw UPDATE_MENU____DISPLAY_ITEM_1, UPDATE_MENU____DISPLAY_ITEM_2, UPDATE_MENU____DISPLAY_ITEM_3, UPDATE_MENU____DISPLAY_ITEM_4, UPDATE_MENU____DISPLAY_ITEM_5
 	;; helloStr:	.db "I Love You So I Do", 0, 0 ; Extra 0 so bytes are even.
 	;; helloStr2nd:	.db "~~~~~", 0, 0
 
@@ -177,7 +177,7 @@ MAIN____START_OF_MAIN:
 	cpi	r16, 0
 	breq	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
 	
-	call	SET_PortD_HIGH_OR_LOW	;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
+;	call	SET_PortD_HIGH_OR_LOW ;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
 
 	call	MAIN_MENU
 	
@@ -223,13 +223,12 @@ MAIN_MENU:
 	push	r30
 	push	r31
 
-	call	CLEAR_LCD
 	;; MAIN_MENU is called after the default display is interrupted by a
 	;; button press. We want to wait a while after this to give the user a
 	;; change to take their finger off of what ever button it was so that we
 	;; dont register a button press.
-	ldi	r17, 0b0011111
-	ldi	r16, 0b0001111
+	ldi	r17, 0b0111111
+	ldi	r16, 0b0011111
 	call	BUSY_WAIT
 
 	clr	r19		; Set menuPos counter to 0.
@@ -243,13 +242,10 @@ MAIN_MENU____MENU_LOOP:
 	cp	r18, r17
 	brne	MAIN_MENU____CHECK_DOWN_BUTTON ; Doesn't set any flags.
 
-	cpi	r19, maxMainMenuItems ; Check to make sure r19 won't go past maxMainMenuItems.
-	breq	MAIN_MENU____SET_MENU_POS_COUNTER_TO_MIN
 	inc	r19			       ; Note that the up button was pressed.
-	jmp	MAIN_MENU____CHECK_DOWN_BUTTON
-MAIN_MENU____SET_MENU_POS_COUNTER_TO_MIN:
+	cpi	r19, maxMainMenuItems ; Check to make sure r19 hasn't gone past maxMainMenuItems -1.
+	brne	MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED
 	clr	r19
-;	jmp	MAIN_MENU____MENU_OPTIONS_JUMP_TABLE
 	
 MAIN_MENU____CHECK_DOWN_BUTTON:
 	mov	r18, r16
@@ -267,93 +263,15 @@ MAIN_MENU____SET_MENU_POS_COUNTER_TO_MAX:
 	dec	r19		; MaxMainMenuIterms is 1 past our max value.
 
 MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
-	;; Here we check r19 agains the menu pos counter value that was stored
-	;; in memory last time MAIN_MENU was called. If it has changed we use
-	;; r19 to index into a jump table. Otherwise we exit the MAIN_MENU sub
-	;; rutine.
+	;; Here we check r19 aginst the menu pos counter value that was stored
+	;; in memory last time MAIN_MENU____MENU_LOOP was iterated over. If it
+	;; changed we use r19 to index into a jump table. Otherwise we loop
+	;; again.
 	cp	r19, r20
-	breq	MAIN_MENU____SKIP_MENU_UPDATE
+	breq	MAIN_MENU____MENU_LOOP
 	mov	r20, r19	; Update last menuPos counter.
-
-
-
-
-	mov	r16, r19
-	call	SET_PortD_HIGH_OR_LOW
-	
-
-	lsl	r19		; Multiply by 2.
-	ldi	r30, low(2*mainMenuItemsJumpTable)
-	add	r30, r19
-	ldi	r31, high(2*mainMenuItemsJumpTable)
-	add	r31, r19
-	ijmp			; PC <- Z
-	;; We would use a jump table here but we don't know how to do it using
-	;; our assembler (avra 1.4.2)
-	;; MAIN_MENU____DISPLAY_ITEM1_1
-	;; MAIN_MENU____DISPLAY_ITEM1_2
-	;; MAIN_MENU____DISPLAY_ITEM1_3
-	;; MAIN_MENU____DISPLAY_ITEM1_4
-	;; MAIN_MENU____DISPLAY_ITEM1_5
-
-	
-
-
-
-MAIN_MENU____DISPLAY_ITEM_1:
-
-	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
-	
-	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSetTimeStr)
-	call	WRITE_TO_LCD
-	
-	call	SWITCH_LCD_LINE
-	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSetDateStr)
-	call	WRITE_TO_LCD
-	
-	jmp	MAIN_MENU____EXIT_MENU_UPDATE
-MAIN_MENU____DISPLAY_ITEM_2:
-
-
-	
-
-	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
-	
-	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSetDateStr)
-	call	WRITE_TO_LCD
-	
-	call	SWITCH_LCD_LINE
-	ldi	r30, low(2*mainMenuSetActivationTimeStr) ; Load address of string.
-	ldi	r31, high(2*mainMenuSetActivationTimeStr)
-	call	WRITE_TO_LCD
-	
-	jmp	MAIN_MENU____EXIT_MENU_UPDATE
-MAIN_MENU____DISPLAY_ITEM_3:
-	
-	jmp	MAIN_MENU____EXIT_MENU_UPDATE
-MAIN_MENU____DISPLAY_ITEM_4:
-	
-	jmp	MAIN_MENU____EXIT_MENU_UPDATE
-MAIN_MENU____DISPLAY_ITEM_5:
-	
-	jmp	MAIN_MENU____EXIT_MENU_UPDATE
-	
-	
-
-MAIN_MENU____SKIP_MENU_UPDATE:
-MAIN_MENU____EXIT_MENU_UPDATE:
-	
-
-	ldi	r16, 0b00011111
-	ldi	r17, 0b00011111
-	call	BUSY_WAIT
+	mov	r16, r19	; Set up arg for UPDATE_MENU.
+	call	UPDATE_MENU
 
 	jmp	MAIN_MENU____MENU_LOOP
 
@@ -363,6 +281,86 @@ MAIN_MENU____EXIT_MENU_UPDATE:
 	pop	r19
 	pop	r18
 	pop	r17
+	ret
+
+
+UPDATE_MENU:
+	push	r17
+	push	r16
+
+	call	SET_PortD_HIGH_OR_LOW
+	
+	ldi	r17, 0b0111111
+	ldi	r16, 0b0011111
+	call	BUSY_WAIT
+
+	pop	r16
+	pop	r17
+	
+;; 	push	r16
+;; 	push	r30
+;; 	push	r31
+
+
+	;; 	call	SET_PortD_HIGH_OR_LOW ;TMP======================================
+
+		;; call	CLEAR_LCD
+	
+
+;; 	lsl	r16		; Multiply by 2.
+;; 	ldi	r30, low(2*mainMenuItemsJumpTable)
+;; 	add	r30, r16
+;; 	ldi	r31, high(2*mainMenuItemsJumpTable)
+;; 	add	r31, r16
+;; 	ijmp			; PC <- Z
+;; 	;; We would use a jump table here but we don't know how to do it using
+;; 	;; our assembler (avra 1.4.2)
+;; 	;; UPDATE_MENU____DISPLAY_ITEM1_1
+;; 	;; UPDATE_MENU____DISPLAY_ITEM1_2
+;; 	;; UPDATE_MENU____DISPLAY_ITEM1_3
+;; 	;; UPDATE_MENU____DISPLAY_ITEM1_4
+;; 	;; UPDATE_MENU____DISPLAY_ITEM1_5
+;; UPDATE_MENU____DISPLAY_ITEM_1:
+;; 	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSelectionStr)
+;; 	call	WRITE_TO_LCD
+	
+;; 	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSetTimeStr)
+;; 	call	WRITE_TO_LCD
+	
+;; 	call	SWITCH_LCD_LINE
+;; 	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSetDateStr)
+;; 	call	WRITE_TO_LCD
+	
+;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+;; UPDATE_MENU____DISPLAY_ITEM_2:
+;; 	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSelectionStr)
+;; 	call	WRITE_TO_LCD
+	
+;; 	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSetDateStr)
+;; 	call	WRITE_TO_LCD
+	
+;; 	call	SWITCH_LCD_LINE
+;; 	ldi	r30, low(2*mainMenuSetActivationTimeStr) ; Load address of string.
+;; 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+;; 	call	WRITE_TO_LCD
+;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+;; UPDATE_MENU____DISPLAY_ITEM_3:
+;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+;; UPDATE_MENU____DISPLAY_ITEM_4:
+;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+;; UPDATE_MENU____DISPLAY_ITEM_5:
+;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+
+;; UPDATE_MENU____EXIT_MENU_UPDATE:
+
+;; 	push	r31
+;; 	push	r30
+;; 	pop	r16
 	ret
 
 
