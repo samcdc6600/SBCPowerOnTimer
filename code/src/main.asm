@@ -44,6 +44,7 @@
 	.set	lcdLine1	= 0b00000000
 	.set	lcdLine2Half	= 0x7f ; 127, lcdLine2 should equal this after right shift.
 	.set	lcdLine2	= 0b11111111 ; Must be ff as we invert to get lcdLine1.
+	.set	mainMenuSelectionStrLen = 0b00000001 ; Length of mainMenuSelectionStr.
 	;; The Display data RAM (DDRAM) is 80 x 8 bits.
 	;; 0x28 = 40 (0x29 because the ATmega16 doesn't have brgt (branch if
 	;; greater than) so we must use brsh (branch if same or higher.)
@@ -81,7 +82,7 @@
 	.dseg
 	;; ==| LCD related variables |==
 	;; Sould only be changed by SWITCH_TO_SECOND_LCD_LINE (after INIT_LCD.)
-	currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
+	;; currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
 	;; Stores the length of the longest line on the display.
 	;; Reserve 1 byte (current max line len can't be more than 40 bytes.)
 	currentMaxLineLen:	.byte 1
@@ -230,6 +231,8 @@ MAIN_MENU:
 	mov	r20, r19	; Set last menuPos counter to r19 (menuPos).
 
 MAIN_MENU____MENU_LOOP:
+	call	SCROLL_LCD
+	
 	ldi	r17, buttonPressDelaySquaredComp ; Debounce initial button press and subsequent presses.
 	ldi	r16, buttonPressDelayLinearComp
 	call	BUSY_WAIT
@@ -285,11 +288,13 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 
 
 UPDATE_MENU:
-	push	r16
+	push	r17
+	;; push	r18
 	push	r30
 	push	r31
 
 	call	CLEAR_LCD
+	call	CLEAR_SCROLL_STATE ; Set currentMaxLineLen and currentScrollLen to 0.
 	;; Load address of jump table and add offset into current menu item selected.
 	ldi	r30, low(UPDATE_MENU____JUMP_TABLE)
 	add	r30, r16
@@ -303,19 +308,6 @@ UPDATE_MENU____JUMP_TABLE:
 	rjmp	UPDATE_MENU____DISPLAY_ITEM_4
 	rjmp	UPDATE_MENU____DISPLAY_ITEM_5
 
-;; 	lsl	r16		; Multiply by 2.
-;; 	ldi	r30, low(2*mainMenuItemsJumpTable)
-;; ;	add	r30, r16
-;; 	ldi	r31, high(2*mainMenuItemsJumpTable)
-;; ;	add	r31, r16
-;; 	ijmp			; PC <- Z
-	;; We would use a jump table here but we don't know how to do it using
-	;; our assembler (avra 1.4.2)
-	;; UPDATE_MENU____DISPLAY_ITEM1_1
-	;; UPDATE_MENU____DISPLAY_ITEM1_2
-	;; UPDATE_MENU____DISPLAY_ITEM1_3
-	;; UPDATE_MENU____DISPLAY_ITEM1_4
-	;; UPDATE_MENU____DISPLAY_ITEM1_5
 UPDATE_MENU____DISPLAY_ITEM_1:
 	ldi	r30, low(2*mainMenuSelectionStr) ; Current selection arrow.
 	ldi	r31, high(2*mainMenuSelectionStr)
@@ -323,11 +315,15 @@ UPDATE_MENU____DISPLAY_ITEM_1:
 	
 	ldi	r30, low(2*mainMenuSetTimeStr) ; Current selection.
 	ldi	r31, high(2*mainMenuSetTimeStr)
+	ldi	r16, mainMenuSelectionStrLen ; R16 is added onto the length of the string at Z.
+	call	UPDATE_CURRENT_MAX_LINE_LEN ; Update currentMaxLineLen.
 	call	WRITE_TO_LCD
 	
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetDateStr) ; Below selection.
 	ldi	r31, high(2*mainMenuSetDateStr)
+	ldi	r16, 0		; Set arg back to 0.
+	call	UPDATE_CURRENT_MAX_LINE_LEN ; Update currentMaxLineLen.
 	call	WRITE_TO_LCD
 	
 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
@@ -339,11 +335,15 @@ UPDATE_MENU____DISPLAY_ITEM_2:
 
 	ldi	r30, low(2*mainMenuSetBrightnessStr)
 	ldi	r31, high(2*mainMenuSetBrightnessStr)
+	ldi	r16, mainMenuSelectionStrLen
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetTimeStr)
 	ldi	r31, high(2*mainMenuSetTimeStr)
+	ldi	r16, 0
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
@@ -355,11 +355,15 @@ UPDATE_MENU____DISPLAY_ITEM_3:
 
 	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
 	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
+	ldi	r16, mainMenuSelectionStrLen
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetBrightnessStr)
 	ldi	r31, high(2*mainMenuSetBrightnessStr)
+	ldi	r16, 0
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
@@ -371,11 +375,15 @@ UPDATE_MENU____DISPLAY_ITEM_4:
 
 	ldi	r30, low(2*mainMenuSetActivationTimeStr)
 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+	ldi	r16, mainMenuSelectionStrLen
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
 	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
+	ldi	r16, 0
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
@@ -387,11 +395,15 @@ UPDATE_MENU____DISPLAY_ITEM_5:
 
 	ldi	r30, low(2*mainMenuSetDateStr)
 	ldi	r31, high(2*mainMenuSetDateStr)
+	ldi	r16, mainMenuSelectionStrLen
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetActivationTimeStr)
 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+	ldi	r16, 0
+	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
@@ -400,6 +412,60 @@ UPDATE_MENU____EXIT_MENU_UPDATE:
 
 	pop	r31
 	pop	r30
+	;; pop	r18
+	pop	r17
+	ret
+
+
+CLEAR_SCROLL_STATE:
+	push	r16
+	push	r30
+	push	r31
+
+	ldi	r30, low(2*currentMaxLineLen) ; Load currentMaxLineLen into Z.
+	ldi	r31, high(2*currentMaxLineLen)
+	ldi	r16, 0b0
+	st	Z, r16		; Set *currentMaxLineLen to 0.
+	ldi	r30, low(2*currentScrollLen) ; Load currentScrollLen into Z.
+	ldi	r31, high(2*currentScrollLen)
+	ldi	r16, 0b0
+	st	Z, r16		; Set *currentScrollLen to 0 (we havent scrolled the display yet.)
+	
+	pop	r31
+	pop	r30
+	pop	r16
+	ret
+
+
+UPDATE_CURRENT_MAX_LINE_LEN:
+	push	r16
+	push	r17
+	push	r30
+	push	r31
+	
+	clr	r17		; Clear string len count.
+	add	r17, r16	; Add R16 to the length of the string.
+
+UPDATE_CURRENT_MAX_LINE_LEN____COUNTING:
+	lpm	r16, Z+
+	cpi	r16, FALSE	; Check if we've hit the null byte.
+	breq	UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN ; We've reached the end of the line.
+	inc	r17
+	jmp	UPDATE_CURRENT_MAX_LINE_LEN____COUNTING
+
+UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN:
+	ldi	r30, low(2*currentMaxLineLen)
+	ldi	r31, high(2*currentMaxLineLen)
+	lpm	r16, Z		; Load *currentScrollLen into r17
+	cp	r16, r17
+	brsh	UPDATE_CURRENT_MAX_LINE_LEN____EXIT ; Don't update currentMaxLineLen. (brsh = Branch if Same or Higher)
+	spm	Z, r17
+
+UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
+
+	pop	r31
+	pop	r30
+	pop	r17
 	pop	r16
 	ret
 
@@ -481,7 +547,7 @@ SCROLL_LCD:
 	;; Load current max line len (the length of the longest currently displayed line.)
 	ldi	r30, low(2*currentMaxLineLen)
 	ldi	r31, high(2*currentMaxLineLen)
-	ld	r16, Z
+	lpm	r16, Z
 	dec	r16		; No branch if less than or equal.
 	cpi	r16, displayWidth	; Will scroll if both lines are of length 0 (This shouldn't be the case!)
 	brlo	SCROLL_LCD____NO_SCROLL_NEEDED
@@ -500,10 +566,10 @@ SCROLL_LCD_PROPER:
 	push	r16
 	push	r17
 	
-	ld	r16, Z		; Load *currentMaxLineLen
+	lpm	r16, Z		; Load *currentMaxLineLen
 	ldi	r30, low(2*currentScrollLen)
 	ldi	r31, high(2*currentScrollLen)
-	ld	r17, Z		; Load *currentScrollLen into r17
+	lpm	r17, Z		; Load *currentScrollLen into r17
 	subi	r16, displayWidth ; We've already made sure r16 < displayWidth in SCROLL_LCD.
 	cp	r17, r16
 	breq	SCROLL_LCD_PROPER____FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
@@ -522,7 +588,7 @@ SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	brne	SCROLL_LCD_PROPER____FAST_SCROLL_BACK
 
 SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
-	st	Z, r17		; Store *currentScrollLen
+	spm	Z, r17		; Store *currentScrollLen
 	pop	r17
 	pop	r16
 	ret
@@ -651,24 +717,10 @@ INIT_LCD:
 	;; Output display function set command.
 	;; Set display parameters (DL (bus width), N (number of lines),
 	;; F (font size)). We set the state of the data pins (port A) high first.
-	ldi  r16, functionSetData ; SEND_LCD_INSTRUCTION takes r16 as an argument.
-	call SEND_LCD_INSTRUCTION
-	call TURN_ON_DISPLAY
-	;; It will simplify the code to know the current LCD line (there may be
-	;; a way to find this our from the LCD controller, however we don't know
-	;; of any.)
-	ldi	r30, low(2*currentLCDLine) ; Load currentLCDLine into Z.
-	ldi	r31, high(2*currentLCDLine)
-	ldi	r16, lcdLine1
-	st	Z, r16		; Set *currentLCDLine to the first line (lcdLine1.)
-	ldi	r30, low(2*currentMaxLineLen) ; Load currentMaxLineLen into Z.
-	ldi	r31, high(2*currentMaxLineLen)
-	ldi	r16, 0b0
-	st	Z, r16		; Set *currentMaxLineLen to 0.
-	ldi	r30, low(2*currentScrollLen) ; Load currentScrollLen into Z.
-	ldi	r31, high(2*currentScrollLen)
-	ldi	r16, 0b0
-	st	Z, r16		; Set *currentScrollLen to 0 (we havent scrolled the display yet.)
+	ldi	r16, functionSetData ; SEND_LCD_INSTRUCTION takes r16 as an argument.
+	call	SEND_LCD_INSTRUCTION
+	call	TURN_ON_DISPLAY
+	call	CLEAR_SCROLL_STATE
 	ret
 
 
