@@ -40,8 +40,6 @@
 	;; =================== For Interrupt on Clock Signal ===================
 	;; To enable int2 (pin PB2)
 	.equ	int2En = 0b00100000
-	;; =============================== Timing ==============================
-	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	;; ======================= LCD Related Constants =======================
 	.set	lcdLine1	= 0b00000000
 	.set	lcdLine2Half	= 0x7f ; 127, lcdLine2 should equal this after right shift.
@@ -62,7 +60,7 @@
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.set	functionSetData  = 0b00111000 ; that is bits 4, 3 and 2.
 	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
-	.set	displayOnData    = 0b00001111 ; That is bits 2, 1 and 0
+	.set	displayOnData    = 0b00001100 ; That is bits 2, 1 and 0
 	;; Sets DDRAM address so that the cursor is positioned at the head of the second line.
 	.set	setDDRAMAddressTo2ndLine	  = 0b11000000
 	;; S/C (display shift (1) / cursor move), R/L (shift to the right (1) / shift to the left)
@@ -70,6 +68,10 @@
 	.set	shiftDisplayRight	= 0b00011100
 	;; Clear display
 	.set	clearDisplay	= 0b00000001
+	;; =============================== Timing ==============================
+	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
+	.equ	buttonPressDelaySquaredComp = 0b00111111
+	.equ	buttonPressDelayLinearComp = 0b00011010
 	;; ================================ Menu ===============================
 	.set	maxMainMenuItems	= 0b00000101 ; There are 5 items in our main menu.
 
@@ -78,7 +80,7 @@
 	;; =====================================================================
 	.dseg
 	;; ==| LCD related variables |==
-	;; Sould only be changed by SWITCH_LCD_LINE (after INIT_LCD.)
+	;; Sould only be changed by SWITCH_TO_SECOND_LCD_LINE (after INIT_LCD.)
 	currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
 	;; Stores the length of the longest line on the display.
 	;; Reserve 1 byte (current max line len can't be more than 40 bytes.)
@@ -129,11 +131,11 @@
 	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
 
 	mainMenuSelectionStr:	.db "~", 0 ; "~" becomes a right facing arrow!
-	mainMenuSetTimeStr:	.db "- Set Time -", 0
-	mainMenuSetDateStr:	.db "- Set Date -", 0
-	mainMenuSetActivationTimeStr:	.db "- Set Activation Time -", 0
-	mainMenuDeleteActivationTimeStr:	.db "- Delete Activation Time -", 0
-	mainMenuSetBrightnessStr:	.db "- Set Brightness -", 0
+	mainMenuSetTimeStr:	.db "Set Time", 0 ; Item 1.
+	mainMenuSetDateStr:	.db "Set Date", 0 ; Item 2.
+	mainMenuSetActivationTimeStr:	.db "Set Activation Time", 0 ; Item 3.
+	mainMenuDeleteActivationTimeStr:	.db "Delete Activation Time", 0 ; Item 4.
+	mainMenuSetBrightnessStr:	.db "Set Brightness", 0 ; Item 5.
 
 	;; ======================== Main Menu Jump Table =======================
 ;	mainMenuItemsJumpTable:	.dw UPDATE_MENU____DISPLAY_ITEM_1, UPDATE_MENU____DISPLAY_ITEM_2, UPDATE_MENU____DISPLAY_ITEM_3, UPDATE_MENU____DISPLAY_ITEM_4, UPDATE_MENU____DISPLAY_ITEM_5
@@ -148,7 +150,7 @@ MAIN:
 	;; ldi	r31, high(2*helloStr)
 	;; call	WRITE_TO_LCD
 	
-	;; call	SWITCH_LCD_LINE
+	;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	;; ldi	r31, high(2*helloStr2nd)
 	;; call	WRITE_TO_LCD
@@ -161,7 +163,7 @@ MAIN:
 	ldi	r31, high(2*helloStr)
 	call	WRITE_TO_LCD
 	
-	call	SWITCH_LCD_LINE		;
+	call	SWITCH_TO_SECOND_LCD_LINE		;
 	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
 	call	WRITE_TO_LCD
@@ -223,18 +225,15 @@ MAIN_MENU:
 	push	r30
 	push	r31
 
-	;; MAIN_MENU is called after the default display is interrupted by a
-	;; button press. We want to wait a while after this to give the user a
-	;; change to take their finger off of what ever button it was so that we
-	;; dont register a button press.
-	ldi	r17, 0b0111111
-	ldi	r16, 0b0011111
-	call	BUSY_WAIT
 
 	clr	r19		; Set menuPos counter to 0.
 	mov	r20, r19	; Set last menuPos counter to r19 (menuPos).
 
 MAIN_MENU____MENU_LOOP:
+	ldi	r17, buttonPressDelaySquaredComp ; Debounce initial button press and subsequent presses.
+	ldi	r16, buttonPressDelayLinearComp
+	call	BUSY_WAIT
+	
 	call	GET_BUTTON_STATE
 	mov	r18, r16	; Check up and down button state. ==============
 	ldi	r17, upButton
@@ -246,7 +245,7 @@ MAIN_MENU____MENU_LOOP:
 	cpi	r19, maxMainMenuItems ; Check to make sure r19 hasn't gone past maxMainMenuItems -1.
 	brne	MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED
 	clr	r19
-	
+
 MAIN_MENU____CHECK_DOWN_BUTTON:
 	mov	r18, r16
 	ldi	r17, downButton
@@ -271,6 +270,7 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 	breq	MAIN_MENU____MENU_LOOP
 	mov	r20, r19	; Update last menuPos counter.
 	mov	r16, r19	; Set up arg for UPDATE_MENU.
+
 	call	UPDATE_MENU
 
 	jmp	MAIN_MENU____MENU_LOOP
@@ -285,82 +285,122 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 
 
 UPDATE_MENU:
-	push	r17
 	push	r16
+	push	r30
+	push	r31
 
-	call	SET_PortD_HIGH_OR_LOW
-	
-	ldi	r17, 0b0111111
-	ldi	r16, 0b0011111
-	call	BUSY_WAIT
+	call	CLEAR_LCD
+	;; Load address of jump table and add offset into current menu item selected.
+	ldi	r30, low(UPDATE_MENU____JUMP_TABLE)
+	add	r30, r16
+	ldi	r31, high(UPDATE_MENU____JUMP_TABLE)
+	ijmp			; PC <- Z
 
-	pop	r16
-	pop	r17
-	
-;; 	push	r16
-;; 	push	r30
-;; 	push	r31
-
-
-	;; 	call	SET_PortD_HIGH_OR_LOW ;TMP======================================
-
-		;; call	CLEAR_LCD
-	
+UPDATE_MENU____JUMP_TABLE:
+	rjmp	UPDATE_MENU____DISPLAY_ITEM_1
+	rjmp	UPDATE_MENU____DISPLAY_ITEM_2
+	rjmp	UPDATE_MENU____DISPLAY_ITEM_3
+	rjmp	UPDATE_MENU____DISPLAY_ITEM_4
+	rjmp	UPDATE_MENU____DISPLAY_ITEM_5
 
 ;; 	lsl	r16		; Multiply by 2.
 ;; 	ldi	r30, low(2*mainMenuItemsJumpTable)
-;; 	add	r30, r16
+;; ;	add	r30, r16
 ;; 	ldi	r31, high(2*mainMenuItemsJumpTable)
-;; 	add	r31, r16
+;; ;	add	r31, r16
 ;; 	ijmp			; PC <- Z
-;; 	;; We would use a jump table here but we don't know how to do it using
-;; 	;; our assembler (avra 1.4.2)
-;; 	;; UPDATE_MENU____DISPLAY_ITEM1_1
-;; 	;; UPDATE_MENU____DISPLAY_ITEM1_2
-;; 	;; UPDATE_MENU____DISPLAY_ITEM1_3
-;; 	;; UPDATE_MENU____DISPLAY_ITEM1_4
-;; 	;; UPDATE_MENU____DISPLAY_ITEM1_5
-;; UPDATE_MENU____DISPLAY_ITEM_1:
-;; 	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSelectionStr)
-;; 	call	WRITE_TO_LCD
+	;; We would use a jump table here but we don't know how to do it using
+	;; our assembler (avra 1.4.2)
+	;; UPDATE_MENU____DISPLAY_ITEM1_1
+	;; UPDATE_MENU____DISPLAY_ITEM1_2
+	;; UPDATE_MENU____DISPLAY_ITEM1_3
+	;; UPDATE_MENU____DISPLAY_ITEM1_4
+	;; UPDATE_MENU____DISPLAY_ITEM1_5
+UPDATE_MENU____DISPLAY_ITEM_1:
+	ldi	r30, low(2*mainMenuSelectionStr) ; Current selection arrow.
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
 	
-;; 	ldi	r30, low(2*mainMenuSetTimeStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSetTimeStr)
-;; 	call	WRITE_TO_LCD
+	ldi	r30, low(2*mainMenuSetTimeStr) ; Current selection.
+	ldi	r31, high(2*mainMenuSetTimeStr)
+	call	WRITE_TO_LCD
 	
-;; 	call	SWITCH_LCD_LINE
-;; 	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSetDateStr)
-;; 	call	WRITE_TO_LCD
+	call	SWITCH_TO_SECOND_LCD_LINE
+	ldi	r30, low(2*mainMenuSetDateStr) ; Below selection.
+	ldi	r31, high(2*mainMenuSetDateStr)
+	call	WRITE_TO_LCD
 	
-;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
-;; UPDATE_MENU____DISPLAY_ITEM_2:
-;; 	ldi	r30, low(2*mainMenuSelectionStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSelectionStr)
-;; 	call	WRITE_TO_LCD
+	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
 	
-;; 	ldi	r30, low(2*mainMenuSetDateStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSetDateStr)
-;; 	call	WRITE_TO_LCD
-	
-;; 	call	SWITCH_LCD_LINE
-;; 	ldi	r30, low(2*mainMenuSetActivationTimeStr) ; Load address of string.
-;; 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
-;; 	call	WRITE_TO_LCD
-;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
-;; UPDATE_MENU____DISPLAY_ITEM_3:
-;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
-;; UPDATE_MENU____DISPLAY_ITEM_4:
-;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
-;; UPDATE_MENU____DISPLAY_ITEM_5:
-;; 	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+UPDATE_MENU____DISPLAY_ITEM_2:
+	ldi	r30, low(2*mainMenuSelectionStr)
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
 
-;; UPDATE_MENU____EXIT_MENU_UPDATE:
+	ldi	r30, low(2*mainMenuSetBrightnessStr)
+	ldi	r31, high(2*mainMenuSetBrightnessStr)
+	call	WRITE_TO_LCD
 
-;; 	push	r31
-;; 	push	r30
-;; 	pop	r16
+	call	SWITCH_TO_SECOND_LCD_LINE
+	ldi	r30, low(2*mainMenuSetTimeStr)
+	ldi	r31, high(2*mainMenuSetTimeStr)
+	call	WRITE_TO_LCD
+	
+	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	
+UPDATE_MENU____DISPLAY_ITEM_3:
+	ldi	r30, low(2*mainMenuSelectionStr)
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
+
+	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
+	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
+	call	WRITE_TO_LCD
+
+	call	SWITCH_TO_SECOND_LCD_LINE
+	ldi	r30, low(2*mainMenuSetBrightnessStr)
+	ldi	r31, high(2*mainMenuSetBrightnessStr)
+	call	WRITE_TO_LCD
+	
+	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	
+UPDATE_MENU____DISPLAY_ITEM_4:
+	ldi	r30, low(2*mainMenuSelectionStr)
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
+
+	ldi	r30, low(2*mainMenuSetActivationTimeStr)
+	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+	call	WRITE_TO_LCD
+
+	call	SWITCH_TO_SECOND_LCD_LINE
+	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
+	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
+	call	WRITE_TO_LCD
+	
+	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	
+UPDATE_MENU____DISPLAY_ITEM_5:
+	ldi	r30, low(2*mainMenuSelectionStr)
+	ldi	r31, high(2*mainMenuSelectionStr)
+	call	WRITE_TO_LCD
+
+	ldi	r30, low(2*mainMenuSetDateStr)
+	ldi	r31, high(2*mainMenuSetDateStr)
+	call	WRITE_TO_LCD
+
+	call	SWITCH_TO_SECOND_LCD_LINE
+	ldi	r30, low(2*mainMenuSetActivationTimeStr)
+	ldi	r31, high(2*mainMenuSetActivationTimeStr)
+	call	WRITE_TO_LCD
+	
+	jmp	UPDATE_MENU____EXIT_MENU_UPDATE
+
+UPDATE_MENU____EXIT_MENU_UPDATE:
+
+	pop	r31
+	pop	r30
+	pop	r16
 	ret
 
 
@@ -414,7 +454,7 @@ WRITE_TO_LCD____END_WRITE_TO_LCD:
 	ret
 
 
-SWITCH_LCD_LINE:
+SWITCH_TO_SECOND_LCD_LINE:
 	push	r16
 	push	r30
 	push	r31
@@ -422,11 +462,11 @@ SWITCH_LCD_LINE:
 	ldi	r16, low(setDDRAMAddressTo2ndLine) ; Switch to second line :)
 	call	SEND_LCD_INSTRUCTION
 	
-	ldi	r30, low(2*currentLCDLine)
-	ldi	r31, high(2*currentLCDLine)
-	ld	r18, Z
-	com	r18		; One's complement (inverts all bits.)
-	st	Z, r18		; Store current LCD line (r18.)
+	;; ldi	r30, low(2*currentLCDLine)
+	;; ldi	r31, high(2*currentLCDLine)
+	;; ld	r18, Z
+	;; com	r18		; One's complement (inverts all bits.)
+	;; st	Z, r18		; Store current LCD line (r18.)
 	
 	pop	r31
 	pop	r30
