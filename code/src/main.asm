@@ -447,7 +447,7 @@ UPDATE_CURRENT_MAX_LINE_LEN:
 	add	r17, r16	; Add R16 to the length of the string.
 
 UPDATE_CURRENT_MAX_LINE_LEN____COUNTING:
-	lpm	r16, Z+
+	lpm	r16, Z+		; Load str character from flash.
 	cpi	r16, FALSE	; Check if we've hit the null byte.
 	breq	UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN ; We've reached the end of the line.
 	inc	r17
@@ -456,10 +456,12 @@ UPDATE_CURRENT_MAX_LINE_LEN____COUNTING:
 UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN:
 	ldi	r30, low(2*currentMaxLineLen)
 	ldi	r31, high(2*currentMaxLineLen)
-	lpm	r16, Z		; Load *currentScrollLen into r17
+	ld	r16, Z		; Load *currentScrollLen from mem into r16.
 	cp	r16, r17
 	brsh	UPDATE_CURRENT_MAX_LINE_LEN____EXIT ; Don't update currentMaxLineLen. (brsh = Branch if Same or Higher)
-	spm	Z, r17
+	st	Z, r17
+
+	call	SET_PortD_HIGH_OR_LOW
 
 UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 
@@ -495,10 +497,10 @@ WRITE_TO_LCD:
 	
 	clr	r18
 WRITE_TO_LCD____START_WRITE_TO_LCD:
-	lpm	r16, Z+
+	lpm	r16, Z+		; Load from flash.
 	inc	r18
-	ldi	r17, 0b0
-	cp	r16, r17		; Have we hit the null byte?
+;	ldi	r17, 0b0
+	cpi	r16, FALSE		; Have we hit the null byte?
 	breq    WRITE_TO_LCD____END_WRITE_TO_LCD
 	cpi	r18, halfDDRAMSize	; Have we reached the end of the display ram for this line.
 	brge	WRITE_TO_LCD____END_WRITE_TO_LCD
@@ -547,7 +549,7 @@ SCROLL_LCD:
 	;; Load current max line len (the length of the longest currently displayed line.)
 	ldi	r30, low(2*currentMaxLineLen)
 	ldi	r31, high(2*currentMaxLineLen)
-	lpm	r16, Z
+	ld	r16, Z
 	dec	r16		; No branch if less than or equal.
 	cpi	r16, displayWidth	; Will scroll if both lines are of length 0 (This shouldn't be the case!)
 	brlo	SCROLL_LCD____NO_SCROLL_NEEDED
@@ -566,10 +568,10 @@ SCROLL_LCD_PROPER:
 	push	r16
 	push	r17
 	
-	lpm	r16, Z		; Load *currentMaxLineLen
+	ld	r16, Z		; Load *currentMaxLineLen
 	ldi	r30, low(2*currentScrollLen)
 	ldi	r31, high(2*currentScrollLen)
-	lpm	r17, Z		; Load *currentScrollLen into r17
+	ld	r17, Z		; Load *currentScrollLen into r17
 	subi	r16, displayWidth ; We've already made sure r16 < displayWidth in SCROLL_LCD.
 	cp	r17, r16
 	breq	SCROLL_LCD_PROPER____FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
@@ -588,7 +590,7 @@ SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	brne	SCROLL_LCD_PROPER____FAST_SCROLL_BACK
 
 SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
-	spm	Z, r17		; Store *currentScrollLen
+	st	Z, r17		; Store *currentScrollLen
 	pop	r17
 	pop	r16
 	ret
