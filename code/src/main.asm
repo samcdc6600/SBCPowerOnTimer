@@ -72,7 +72,8 @@
 	;; =============================== Timing ==============================
 	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	.equ	buttonPressDelaySquaredComp = 0b00111111
-	.equ	buttonPressDelayLinearComp = 0b00011010
+	.equ	buttonPressDelayLinearComp  = 0b00011011
+	 ;; .equ	buttonPressDelayLinearComp = 0b00111101
 	;; ================================ Menu ===============================
 	.set	maxMainMenuItems	= 0b00000101 ; There are 5 items in our main menu.
 
@@ -189,7 +190,7 @@ MAIN____START_OF_MAIN:
 	
 MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 ;	ldi	r16, enRelay
-	call	SET_PortD_HIGH_OR_LOW
+	;; call	SET_PortD_HIGH_OR_LOW
 	
 
 	
@@ -226,14 +227,14 @@ MAIN_MENU:
 	push	r30
 	push	r31
 
-
 	clr	r19		; Set menuPos counter to 0.
 	mov	r20, r19	; Set last menuPos counter to r19 (menuPos).
 
 MAIN_MENU____MENU_LOOP:
-	call	SCROLL_LCD
-	
-	ldi	r17, buttonPressDelaySquaredComp ; Debounce initial button press and subsequent presses.
+	;; Add delay affter call to GET_BUTTON_STATE (is also called before
+	;; calling this rutine.)
+	call SCROLL_LCD
+	ldi	r17, buttonPressDelaySquaredComp
 	ldi	r16, buttonPressDelayLinearComp
 	call	BUSY_WAIT
 	
@@ -276,6 +277,12 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 
 	call	UPDATE_MENU
 
+	;; 	call	SCROLL_LCD
+	;; ldi	r17, buttonPressDelaySquaredComp ; Add delay before scrolling after updating menu and add delay before next button read.
+	;; ldi	r16, buttonPressDelayLinearComp
+	;; call	BUSY_WAIT
+
+
 	jmp	MAIN_MENU____MENU_LOOP
 
 	pop	r31
@@ -294,6 +301,14 @@ UPDATE_MENU:
 	push	r31
 
 	call	CLEAR_LCD
+	
+	;; TMP=============================================================================================================================================
+	;; TMP=============================================================================================================================================
+	;; ldi	TCNT0, 0b0	  ; Load timer 0 with 0.
+	;; ldi	TCCR0, 0b00000011 ; Set clock source for timer 0 to clk / 64.
+	;; TMP=============================================================================================================================================
+	;; TMP=============================================================================================================================================
+	
 	call	CLEAR_SCROLL_STATE ; Set currentMaxLineLen and currentScrollLen to 0.
 	;; Load address of jump table and add offset into current menu item selected.
 	ldi	r30, low(UPDATE_MENU____JUMP_TABLE)
@@ -461,7 +476,7 @@ UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN:
 	brsh	UPDATE_CURRENT_MAX_LINE_LEN____EXIT ; Don't update currentMaxLineLen. (brsh = Branch if Same or Higher)
 	st	Z, r17
 
-	call	SET_PortD_HIGH_OR_LOW
+	;; call	SET_PortD_HIGH_OR_LOW 
 
 UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 
@@ -546,6 +561,15 @@ SCROLL_LCD:
 	push	r16
 	push	r30
 	push	r31
+
+	;; TMP=============================================================================================================================================
+	;; TMP=============================================================================================================================================
+	;; cpi	TIFR, 0x01
+	;; brne	SCROLL_LCD____NO_SCROLL_NEEDED
+	;; ldi	TIFR, 0x0
+	;; TMP=============================================================================================================================================
+	;; TMP=============================================================================================================================================
+	
 	;; Load current max line len (the length of the longest currently displayed line.)
 	ldi	r30, low(2*currentMaxLineLen)
 	ldi	r31, high(2*currentMaxLineLen)
@@ -643,9 +667,11 @@ INIT:
 	;ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
 	ldi	r16, low(allHigh) ; Set pull up resistors.
 	call	SET_PortB_HIGH_OR_LOW
-	
+
 	call	INIT_LCD
 	call	ENABLE_INT2
+	call	ENABLE_TIMER0
+
 	ret
 
 
@@ -796,12 +822,32 @@ BUSY_WAIT____LOOP_2_START:
 	ret
 
 
-ENABLE_INT2:			; Note that this rutine does enable interupts (sei)
+ENABLE_INT2:
 	push	r16
 	ldi	r16, low(int2En)
 	out	GICR, r16	; Set external interrupt 2 to be enabled
 	pop	r16
 	ret
+
+
+ENABLE_TIMER0:
+	push	r16
+	
+	;ldi	r16, TOIE0	; Timer/Counter0 Overflow Interrupt Enable flag.
+	ldi	r16, 0x1
+	out	TIMSK, r16	; Enable Timer0 overflow interrupts. TIMSK is the Timer / Counter Interrupt Mask Register.
+
+	ldi	r16, 0x0	; We are counting from 0.
+	out	TCNT0, r16	; Set up the Timer/Counter Register 0 with an initial value.
+
+	;ldi	r16, CS00	; Set up r16 with flags for 1024 prescaler.
+	;ori	r16, CS02
+	ldi	r16, 0x00000101
+	out	TCCR0, r16	; Start timer0 with a 1024 prescaler. TCCR0 = Timer/Counter Control Register 0.
+	
+	pop	r16
+	ret
+	
 
 	;; =====================================================================
 	;; =============================== ISRs ================================
@@ -823,6 +869,45 @@ TIM1_COMPA:	; Timer1 CompareA Handler
 TIM1_COMPB:	; Timer1 CompareB Handler
 TIM1_OVF:	; Timer1 Overflow Handler
 TIM0_OVF:	; Timer0 Overflow Handler
+	push	r16
+	push	r30
+	push	r31
+
+	;; ldi	r16, 0xff
+	;; call	SET_PortD_HIGH_OR_LOW
+
+	ldi	r30, low(2*minutesIdle)
+	ldi	r31, high(2*minutesIdle)
+	ld	r16, Z
+	inc	r16
+	st	Z, r16
+	call	SET_PortD_HIGH_OR_LOW
+;; 	;; ld	r16, Z
+;; 	cpi	r16, 0x0
+;; 	breq	TIME0_OVF____SET
+;; 	;; ldi	r16, 0x0
+;; 	;; st	Z, r16
+;; 	;; ================= Below 2 are tmp
+;; 	ldi	r16, 0x00
+;; 	call	SET_PortD_HIGH_OR_LOW
+	
+;; 	jmp	TIME0_OVF____RESET_COUNTER
+;; TIME0_OVF____SET:
+;; 	;; ldi	r16, 0x1
+;; 	;; st	Z, r16
+;; 	;; ================= Below 2 are tmp
+;; 	ldi	r16, 0xff
+;; 	call	SET_PortD_HIGH_OR_LOW
+	
+;; TIME0_OVF____RESET_COUNTER:
+	
+	ldi	r16, 0x0
+	out	TCNT0, r16	; Set Timer/Counter Register 0 back to 0.
+
+	pop	r31
+	pop	r30
+	pop	r16
+	reti
 SPI_STC:	; SPI Transfer Complete Handler
 USART_RXC:	; USART RX Complete Handler
 USART_UDRE:	; UDR Empty Handler
