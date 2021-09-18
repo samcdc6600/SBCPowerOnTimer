@@ -70,6 +70,22 @@
 	;; Clear display
 	.set	clearDisplay	= 0b00000001
 	;; =============================== Timing ==============================
+	;; || CS02  | CS01  | CS00  |                                         ||
+	;; ||=======|=======|=================================================||
+	;; || 0     | 0     | 0     | No clock source (Timer / Counter stopped)|
+	;; || 0     | 0     | 1     | clk (no pre-scaling)                    ||
+	;; || 0     | 1     | 0     | clk / 8                                 ||
+	;; || 0     | 1     | 1     | clk / 64                                ||
+	;; || 1     | 0     | 0     | clk / 256                               ||
+	;; || 1     | 0     | 1     | clk / 1024                              ||
+	;; || ...     ...     ...     ...                                     ||
+	;; =====================================================================
+	;; 1000,000 / (256x195) = 20.032... (run TIM0_OVF ISR roughly 20 times a
+	;; second. About 3.2% faster than that. This is however theoretical, see
+	;; TIM0_OVF...)
+	.equ	clock0PreScaler = 0b00000100
+	; (255 -195) = 60 (3C). TIM0_OVF is run when timerCounterRegister overflows.
+	.equ	timerCounterRegisterInitialVal = 0x3C
 	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	.equ	buttonPressDelaySquaredComp = 0b00111111
 	.equ	buttonPressDelayLinearComp  = 0b00011011
@@ -833,17 +849,15 @@ ENABLE_INT2:
 ENABLE_TIMER0:
 	push	r16
 	
-	;ldi	r16, TOIE0	; Timer/Counter0 Overflow Interrupt Enable flag.
-	ldi	r16, 0x1
-	out	TIMSK, r16	; Enable Timer0 overflow interrupts. TIMSK is the Timer / Counter Interrupt Mask Register.
-
-	ldi	r16, 0x0	; We are counting from 0.
-	out	TCNT0, r16	; Set up the Timer/Counter Register 0 with an initial value.
-
-	;ldi	r16, CS00	; Set up r16 with flags for 1024 prescaler.
-	;ori	r16, CS02
-	ldi	r16, 0x00000101
-	out	TCCR0, r16	; Start timer0 with a 1024 prescaler. TCCR0 = Timer/Counter Control Register 0.
+	; Enable Timer0 overflow interrupts.
+	ldi	r16, 0x01
+	out	TIMSK, r16	;TIMSK = Timer / Counter Interrupt Mask Register.
+	;; Set up the TCNT0 register 0 with an initial value.
+	ldi	r16, timerCounterRegisterInitialVal
+	out	TCNT0, r16	; TCNT0 = Timer/Counter.
+	;; Start timer0 with the prescaler that corresponds to clock0PreScaler.
+	ldi	r16, clock0PreScaler
+	out	TCCR0, r16	; TCCR0 = Timer/Counter Control Register 0.
 	
 	pop	r16
 	ret
@@ -869,40 +883,34 @@ TIM1_COMPA:	; Timer1 CompareA Handler
 TIM1_COMPB:	; Timer1 CompareB Handler
 TIM1_OVF:	; Timer1 Overflow Handler
 TIM0_OVF:	; Timer0 Overflow Handler
+	;; Not taking into account the time to start the ISR (that is the time
+	;; before the next instruction.) this ISR should take 25 cycles and runs
+	;; every (value that is associated with clock0PreScaler) *
+	;; (255 - timerCounterRegisterInitialVal) cycles. E.g. if the value
+	;; associated with clock0PreScaler = 256 and
+	;; timerCounterRegisterInitialVal = 60. Then the function would be run
+	;; every 49920 cycles (not accounting for the inaccuracy described
+	;; below. That means that this function will use ~ 0.05% of the
+	;; available cycles (not that we are running at 1MHz.)
 	push	r16
+	;; We put this code before the other push's because the counter will
+	;; still be counting when the ISR is called and thus the sooner we
+	;; update TNCT0 the better. We would try to subtract the number of
+	;; unaccounted for cycles from timerCounterRegisterInitialVal but we
+	;; couldn't find any good information on how long it takes to start an
+	;; ISR on the ATmega16.
+	ldi	r16, timerCounterRegisterInitialVal
+	out	TCNT0, r16	; Set Timer/Counter Register 0 back to 0.
 	push	r30
 	push	r31
-
-	;; ldi	r16, 0xff
-	;; call	SET_PortD_HIGH_OR_LOW
-
-	ldi	r30, low(2*minutesIdle)
+	;; The following is done so that code outside of this rutine can be run
+	;; when "counter" reaches various values (the code will of course have
+	;; to check counter.)
+	ldi	r30, low(2*minutesIdle) ; Load address of counter.
 	ldi	r31, high(2*minutesIdle)
-	ld	r16, Z
-	inc	r16
-	st	Z, r16
-	call	SET_PortD_HIGH_OR_LOW
-;; 	;; ld	r16, Z
-;; 	cpi	r16, 0x0
-;; 	breq	TIME0_OVF____SET
-;; 	;; ldi	r16, 0x0
-;; 	;; st	Z, r16
-;; 	;; ================= Below 2 are tmp
-;; 	ldi	r16, 0x00
-;; 	call	SET_PortD_HIGH_OR_LOW
-	
-;; 	jmp	TIME0_OVF____RESET_COUNTER
-;; TIME0_OVF____SET:
-;; 	;; ldi	r16, 0x1
-;; 	;; st	Z, r16
-;; 	;; ================= Below 2 are tmp
-;; 	ldi	r16, 0xff
-;; 	call	SET_PortD_HIGH_OR_LOW
-	
-;; TIME0_OVF____RESET_COUNTER:
-	
-	ldi	r16, 0x0
-	out	TCNT0, r16	; Set Timer/Counter Register 0 back to 0.
+	ld	r16, Z		; Load counter.
+	inc	r16		; Increment counter.
+	st	Z, r16		; Save counter.
 
 	pop	r31
 	pop	r30
