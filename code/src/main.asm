@@ -85,9 +85,10 @@
 	.equ	clock0PreScaler = 0b00000100
 	;; (255 -195) = 60 (3C). TIM0_OVF is run when timerCounterRegister overflows.
 	.equ	timerCounterRegisterInitialVal = 0x3C
-	;; Add 1 and divide by the number of times per second TIM0_OVF is called
-	;; to get the number of times per second we scroll.
-	.equ	lcdScrollInterfaceTimerProperMax = 0x15
+	;; ;; Add 1 and divide by the number of times per second TIM0_OVF is called
+	;; ;; to get the number of times per second we scroll.
+	;; .equ	lcdScrollInterfaceTimerProperMax = 0x15
+	.equ	lcdScrollTimerMax = 0x1E
 	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	.equ	buttonPressDelaySquaredComp = 0b00111111
 	.equ	buttonPressDelayLinearComp  = 0b00011011
@@ -112,17 +113,19 @@
 	;; ==| Backlight related variables |==
 	;; Should be set to TRUE if the back light is off and FALSE otherwise.
 	backLightOff:		.byte 1
+	scrollLCD:		.byte 1
+	scrollLCDTimer:		.byte 1
 	;; Stores the number of minutes since a button was pressed (used to
 	;; automatically turn off the screen back light.)
 	;; minutesIdle:		.byte 1
-	interfaceTimer:		.byte 1
-	;; Is set to interfaceTimer each time CHECK_IF_SCROLL_LCD_TIME_YET is
-	;; run and it does on equal interfaceTimer. If updated
-	;; lcdScrollInterfaceTimerProper is incremented (unless it reaches
-	;; lcdScrollInterfaceTimerProperMax, in which case it is set back to 0.)
-	;; Note that lcdScrollInterfaceTimerProper is incremented before the compare.
-	lcdScrollInterfaceTimer:	.byte 1
-	lcdScrollInterfaceTimerProper:	.byte 1
+	;; interfaceTimer:		.byte 1
+	;; ;; Is set to interfaceTimer each time CHECK_IF_SCROLL_LCD_TIME_YET is
+	;; ;; run and it does on equal interfaceTimer. If updated
+	;; ;; lcdScrollInterfaceTimerProper is incremented (unless it reaches
+	;; ;; lcdScrollInterfaceTimerProperMax, in which case it is set back to 0.)
+	;; ;; Note that lcdScrollInterfaceTimerProper is incremented before the compare.
+	;; lcdScrollInterfaceTimer:	.byte 1
+	;; lcdScrollInterfaceTimerProper:	.byte 1
 	
 	
 	;; ======================== Start Code Segment! ========================
@@ -615,131 +618,163 @@ SCROLL_LCD____NO_SCROLL_NEEDED:
 	;; if CHECK_IF_SCROLL_LCD_TIME_YET is not called at least once between
 	;; each timer interrupt then interfaceTimer
 CHECK_IF_SCROLL_LCD_TIME_YET:
-	push	r17	; We don't bother with r16 because we are using it for a return value.
-	push	r18
-	push	r19
-	;; push	r20
+	push	r17
 	push	r30
 	push	r31
-
-	ldi	r16, FALSE	; Ret value.
-
-	ldi	r30, low(2*interfaceTimer)
-	ldi	r31, high(2*interfaceTimer)
-	ld	r17, Z		; r17 = interfaceTimer.
-	ldi	r30, low(2*lcdScrollInterfaceTimer)
-	ldi	r31, high(2*lcdScrollInterfaceTimer)
-	ld	r18, Z		; r18 = lcdScrollInterfaceTimer (used to check if interface time has changed.)
-	;; mov	r16, r18
-	;; call	SET_PortD_HIGH_OR_LOW
-	;; ldi	r16, FALSE	; Ret value.
-	cp	r18, r17
-	breq	CHECK_IF_SCROLL_LCD_TIME_YET____RETURN
-
-	;; InterfaceTimer has changed since this rutine was last called. Update
-	st	Z, r17		; lcdScrollInterfaceTimer.
 	
-	push	r16		; Setup for use with ret at top of rutine.
-	;; Get abs difference between
-	mov	r16, r17	; r16 <- Interface timer.
-	mov	r17, r18	; r17 <- LCD scroll interface timer.
-	call	GET_ABS_DIFFERENCE ; Diff returned via r16.
-	;; mov	r18, r16	; Copy difference to r18.
+	ldi	r30, low(2*scrollLCD) ; Load address of counter.
+	ldi	r31, high(2*scrollLCD)
+	ld	r16, Z
+	ldi	r17, FALSE
+	st	Z, r17		; Set scrollLCD back to false.
 
-	ldi	r30, low(2*lcdScrollInterfaceTimerProper)
-	ldi	r31, high(2*lcdScrollInterfaceTimerProper)
-	ld	r17, Z		; r17 = lcdScrollInterfaceTimerProper (used as actual LCD timer.)
-	;; mov	r20, r16	; Save difference.
-	add	r16, r17	; Add difference (how many times timer0 interrupt has run since the last time this rutine was called.)
-	mov	r19, r16	; Back up (lcdScrollInterfaceTimerProper + diff)
-	ldi	r18, lcdScrollInterfaceTimerProperMax
-	;; brcs	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER ; r17 overflowed.
-	; r16 = (proper + diff), r17 = proper (old val) and r18 = lcdScrollInterfaceTimerProperMax.
-	call	CHECK_IF_OVER_MAX_OR_WRAPED
-	cpi	r16, FALSE
-	pop	r16		; Restore current ret value (doesn't set any flags!)
-	breq	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER
-	; LcdScrollInterfaceTimerProper has been updated (because max is probably not 255.) Copy to r19 for later saving.
-	mov	r19, r17
-	
-	;; cpi	r17, lcdScrollInterfaceTimerProperMax
-	;; brlo	CHECK_IF_SCROLL_LCD_TIME_YET____ ; If updated lcdScrollInterfaceTimerProper is < lcdScrollInterfaceTimerProperMax.
-	;; clr	r17		; We reached lcdScrollInterfaceTimerProperMax...
-	;; ;; The rutine has been called AND seen that interfaceTimer has changed
-	;; since the last call lcdScrollInterfaceTimerProper times.
-	ldi	r16, TRUE	; Return true to signal that the LCD should be scrolled.
-
-CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER:
-	st	Z, r19
-	
-
-CHECK_IF_SCROLL_LCD_TIME_YET____RETURN:
 	pop	r31
 	pop	r30
-	;; pop	r20
-	pop	r19
-	pop	r18
 	pop	r17
 	ret
+;; 	push	r17	; We don't bother with r16 because we are using it for a return value.
+;; 	push	r18
+;; 	push	r19
+;; 	;; push	r20
+;; 	push	r30
+;; 	push	r31
 
+;; 	ldi	r16, FALSE	; Ret value.
 
-	;; Returns (via r16) the absolute difference between r16 and r17.
-GET_ABS_DIFFERENCE:		; Max of 12.5 cycles (including ret.)
-	push	r18
+;; 	ldi	r30, low(2*interfaceTimer)
+;; 	ldi	r31, high(2*interfaceTimer)
+;; 	ld	r17, Z		; r17 = interfaceTimer.
+;; 	ldi	r30, low(2*lcdScrollInterfaceTimer)
+;; 	ldi	r31, high(2*lcdScrollInterfaceTimer)
+;; 	ld	r18, Z		; r18 = lcdScrollInterfaceTimer (used to check if interface time has changed.)
+;; 	;; mov	r16, r18
+;; 	;; call	SET_PortD_HIGH_OR_LOW
+;; 	;; ldi	r16, FALSE	; Ret value.
+;; 	cp	r18, r17
+;; 	breq	CHECK_IF_SCROLL_LCD_TIME_YET____RETURN
 
-	mov	r18, r16	; Back up r16.
-	sub	r16, r17	; Sets Z, C, N, V, H
-	brlo	GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER ; "If(C = 1)..." (therefore we assume C is set when r16 is less then r17.)
-
-	pop	r18		; r16 was > r17. Our work is done! return.
-	ret
-
-GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER: 	; r16 was less then r17. We need to do the sub the other way around.
-	sub	r17, r18	; r18 = value of r16 at time of call.
-	mov	r16, r17	; Save difference to r16.
+;; 	;; InterfaceTimer has changed since this rutine was last called. Update
+;; 	st	Z, r17		; lcdScrollInterfaceTimer.
 	
-	pop	r18
-	ret
+;; 	push	r16		; Setup for use with ret at top of rutine.
+;; 	;; Get abs difference between
+;; 	mov	r16, r17	; r16 <- Interface timer.
+;; 	mov	r17, r18	; r17 <- LCD scroll interface timer.
+;; 	call	GET_ABS_DIFFERENCE ; Diff returned via r16.
+;; 	;; mov	r18, r16	; Copy difference to r18.
+
+;; 	ldi	r30, low(2*lcdScrollInterfaceTimerProper)
+;; 	ldi	r31, high(2*lcdScrollInterfaceTimerProper)
+;; 	ld	r17, Z		; r17 = lcdScrollInterfaceTimerProper (used as actual LCD timer.)
+;; 	;; mov	r20, r16	; Save difference.
+;; 	add	r16, r17	; Add difference (how many times timer0 interrupt has run since the last time this rutine was called.)
+	
+;; 	mov	r19, r16	; Back up (lcdScrollInterfaceTimerProper + diff)	
+;; 	ldi	r18, lcdScrollInterfaceTimerProperMax
+;; 	;; brcs	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER ; r17 overflowed.
+;; 	; r16 = (proper + diff), r17 = proper (old val) and r18 = lcdScrollInterfaceTimerProperMax.
+;; 	call	CHECK_IF_OVER_MAX_OR_WRAPED
+;; 	cpi	r16, FALSE
+;; 	pop	r16		; Restore current ret value (doesn't set any flags!)
+;; 	breq	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER
+;; 	; LcdScrollInterfaceTimerProper has been updated (because max is probably not 255.) Copy to r19 for later saving.
+;; 	mov	r19, r17
+	
+;; 	;; cpi	r17, lcdScrollInterfaceTimerProperMax
+;; 	;; brlo	CHECK_IF_SCROLL_LCD_TIME_YET____ ; If updated lcdScrollInterfaceTimerProper is < lcdScrollInterfaceTimerProperMax.
+;; 	;; clr	r17		; We reached lcdScrollInterfaceTimerProperMax...
+;; 	;; ;; The rutine has been called AND seen that interfaceTimer has changed
+;; 	;; since the last call lcdScrollInterfaceTimerProper times.
+;; 	ldi	r16, TRUE	; Return true to signal that the LCD should be scrolled.
+
+;; CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER:
+;; 	;; ;; ============================= TMP ===================================
+;; 	;; ;; ============================= TMP ===================================
+;; 	;; push	r16
+;; 	;; mov	r16, r19
+;; 	;; call	SET_PortD_HIGH_OR_LOW
+;; 	;; pop	r16
+;; 	;; ;; ============================= TMP ===================================
+;; 	;; ;; ============================= TMP ===================================
+;; 	st	Z, r19
+
+;; CHECK_IF_SCROLL_LCD_TIME_YET____RETURN:
+;; 	;; ============================= TMP ===================================
+;; 	;; ============================= TMP ===================================
+;; 	push	r16
+;; 	ldi	r17, 0b00111111
+;; 	ldi	r16, 0b00111111
+;; 	call	BUSY_WAIT
+;; 	pop	r16
+;; 	;; ============================= TMP ===================================
+;; 	;; ============================= TMP ===================================
+	
+;; 	pop	r31
+;; 	pop	r30
+;; 	;; pop	r20
+;; 	pop	r19
+;; 	pop	r18
+;; 	pop	r17
+;; 	ret
 
 
-	;; Returns TRUE (via r16) if r16 (newVal) is less than 
-	;; r17 (oldVal) (overflow) or if r16 >= valMax. Returns "real" newVal in
-	;; r17 (adjusted relative to max.) if returning TRUE.
-	;; Note: r16 = newVal, r17 = oldVal and r18 = max.
-CHECK_IF_OVER_MAX_OR_WRAPED:
-	cp	r16, r17
-	brsh	CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX ; If newVal is greater than or equal to oldVal.
-	push	r19	   ;	Only in this code path.
-	
-	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
-	ldi	r19, 0xFF
-	sub	r19, r18
-	inc	r19		; (255 - valMax) +1.
-	add	r17, r19
-	
-	ldi	r16, TRUE	; newVal is less then oldVal (we've overflowed.)
-	
-	pop	r19
-	ret
+;; 	;; Returns (via r16) the absolute difference between r16 and r17.
+;; GET_ABS_DIFFERENCE:		; Max of 12.5 cycles (including ret.)
+;; 	push	r18
 
-	;; NewVal is greater than or equal to oldVal (no overflow.)
-CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX: ; Check if over max.
-	cp	r16, r18
-	brlo	CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE
-	;; push	r19
-	
-	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
-	sub	r17, r18	; (newVal - valMax) +1.
-	inc	r17
-	
-	ldi	r16, TRUE	; NewVal hasn't wraped around and is greater than or equal to max.
+;; 	mov	r18, r16	; Back up r16.
+;; 	sub	r16, r17	; Sets Z, C, N, V, H
+;; 	brlo	GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER ; "If(C = 1)..." (therefore we assume C is set when r16 is less then r17.)
 
-	;; pop	r19
-	ret
+;; 	pop	r18		; r16 was > r17. Our work is done! return.
+;; 	ret
 
-CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE:
-	ldi	r16, FALSE	; Although newVal has been updated it hasn't wraped around and is not greater than or equal to max.
-	ret
+;; GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER: 	; r16 was less then r17. We need to do the sub the other way around.
+;; 	sub	r17, r18	; r18 = value of r16 at time of call.
+;; 	mov	r16, r17	; Save difference to r16.
+	
+;; 	pop	r18
+;; 	ret
+
+
+;; 	;; Returns TRUE (via r16) if r16 (newVal) is less than 
+;; 	;; r17 (oldVal) (overflow) or if r16 >= valMax. Returns "real" newVal in
+;; 	;; r17 (adjusted relative to max) if returning TRUE.
+;; 	;; Note: r16 = newVal, r17 = oldVal and r18 = max.
+;; CHECK_IF_OVER_MAX_OR_WRAPED:
+;; 	cp	r16, r17
+;; 	brsh	CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX ; If newVal is greater than or equal to oldVal.
+;; 	push	r19	   ;	Only in this code path.
+	
+;; 	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
+;; 	ldi	r19, 0xFF
+;; 	sub	r19, r18
+;; 	inc	r19		; (255 - valMax) +1.
+;; 	add	r17, r19
+	
+;; 	ldi	r16, TRUE	; newVal is less then oldVal (we've overflowed.)
+	
+;; 	pop	r19
+;; 	ret
+
+;; 	;; NewVal is greater than or equal to oldVal (no overflow.)
+;; CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX: ; Check if over max.
+;; 	cp	r16, r18
+;; 	brlo	CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE
+;; 	;; push	r19
+	
+;; 	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
+;; 	sub	r17, r18	; (newVal - valMax) +1.
+;; 	inc	r17
+	
+;; 	ldi	r16, TRUE	; NewVal hasn't wraped around and is greater than or equal to max.
+
+;; 	;; pop	r19
+;; 	ret
+
+;; CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE:
+;; 	ldi	r16, FALSE	; Although newVal has been updated it hasn't wraped around and is not greater than or equal to max.
+;; 	ret
 
 
 	;; Takes r16 as an argument should contain *currentMaxLineLen.
@@ -765,9 +800,9 @@ SCROLL_LCD_PROPER:
 	;; Scroll LCD (back to start.) vvv   vvv   vvv
 SCROLL_LCD_PROPER____FAST_SCROLL_BACK_START:
 	push	r17		; Add delay before scoll back.
-	ldi	r17, 0b00000001
-	ldi	r16, 0b00000001
-	call	BUSY_WAIT
+	;; ldi	r17, 0b00000001
+	;; ldi	r16, 0b00000001
+	;; call	BUSY_WAIT
 	pop	r17
 SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	ldi	r16, shiftDisplayRight
@@ -776,9 +811,9 @@ SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	cpi	r17, 0b0
 	brne	SCROLL_LCD_PROPER____FAST_SCROLL_BACK
 	push	r17		; Add delay after scroll back.
-	ldi	r17, 0b00000001
-	ldi	r16, 0b00000001
-	call	BUSY_WAIT
+	;; ldi	r17, 0b00000001
+	;; ldi	r16, 0b00000001
+	;; call	BUSY_WAIT
 	pop	r17
 	;; Scroll LCD                  ^^^   ^^^   ^^^
 	
@@ -1004,6 +1039,18 @@ ENABLE_INT2:
 
 ENABLE_TIMER0:
 	push	r16
+	push	r30
+	push	r31
+
+	ldi	r30, low(2*scrollLCDTimer)
+	ldi	r31, high(2*scrollLCDTimer)
+	clr	r16
+	st	Z, r16		; Set scrollLCDTimer to a defined initial value.
+
+	ldi	r30, low(2*scrollLCD)
+	ldi	r31, high(2*scrollLCD)
+	ldi	r16, FALSE
+	st	Z, r16		; Set scrollLCDTimer to a defined initial value.
 	
 	; Enable Timer0 overflow interrupts.
 	ldi	r16, 0x01
@@ -1014,7 +1061,9 @@ ENABLE_TIMER0:
 	;; Start timer0 with the prescaler that corresponds to clock0PreScaler.
 	ldi	r16, clock0PreScaler
 	out	TCCR0, r16	; TCCR0 = Timer/Counter Control Register 0.
-	
+
+	pop	r31
+	pop	r30
 	pop	r16
 	ret
 	
@@ -1050,16 +1099,26 @@ TIM0_OVF:	; Timer0 Overflow Handler
 	out	TCNT0, r16	; Set Timer/Counter Register 0 back to 0.
 	push	r30
 	push	r31
-	;; The following is done so that code outside of this rutine can be run
-	;; when "counter" reaches various values (the code will of course have
-	;; to check counter.)
-	ldi	r30, low(2*interfaceTimer) ; Load address of counter.
-	ldi	r31, high(2*interfaceTimer)
-	ld	r16, Z		; Load counter.
-	inc	r16		; Increment counter.
-	st	Z, r16		; Save counter.
 
-;	call	SET_PortD_HIGH_OR_LOW
+
+	ldi	r30, low(2*scrollLCDTimer)
+	ldi	r31, high(2*scrollLCDTimer)
+	ld	r16, Z		; Load scrollLCDTimer.
+	inc	r16		; Inc first to account for off by one error.
+	call	SET_PORTD_HIGH_OR_LOW
+	cpi	r16, lcdScrollTimerMax
+	brne	TIM0_OVF____EXIT ; Branch if scrollLCDTimer != lcdScrollTimerMax.
+
+	ldi	r16, TRUE	; Note that it is time to scroll.
+	ldi	r30, low(2*scrollLCD)
+	ldi	r31, high(2*scrollLCD)
+	st	Z, r16
+	clr	r16		; Reset scrollLCDTimer.
+
+TIM0_OVF____EXIT:
+	ldi	r30, low(2*scrollLCDTimer)
+	ldi	r31, high(2*scrollLCDTimer)
+	st	Z, r16		; Save scrollLCDTimer.
 
 	pop	r31
 	pop	r30
