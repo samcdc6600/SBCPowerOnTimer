@@ -34,7 +34,8 @@
 	.set	rightButton		= 0b00100000 ; -> PB5
 	;	.set	int2Input		= 0b00000100 ; Int 2 is PB2
 ;	.set	notInt2Input		= 0b11111011 ; For when we don't want int2.
-	.set	int2Pin			= 0b00000100 ; For when we don't want int2 (follow with neg.)
+	.set	int2Pin			= 0b00000100
+					  
 	;; ============================== Outputs ==============================
 	.set	enRelay			= 0b10000000 ; Relay is connected to PD7.
 	;; =================== For Interrupt on Clock Signal ===================
@@ -88,7 +89,7 @@
 	;; ;; Add 1 and divide by the number of times per second TIM0_OVF is called
 	;; ;; to get the number of times per second we scroll.
 	;; .equ	lcdScrollInterfaceTimerProperMax = 0x15
-	.equ	lcdScrollTimerMax = 0x1E
+	.equ	lcdScrollTimerMax = 0x11
 	.equ	arcMinute = 0b00111100 ; Number of seconds in minute.
 	.equ	buttonPressDelaySquaredComp = 0b00111111
 	.equ	buttonPressDelayLinearComp  = 0b00011011
@@ -195,17 +196,23 @@ MAIN:
 	call	WRITE_TO_LCD
 
 
-;	ldi	r16, 0b00011111	
-;	ldi	r17, 0b00011111
-;	call	BUSY_WAIT
+	;; ldi	r16, 0b00011111	
+	;; ldi	r17, 0b00011111
+	;; call	BUSY_WAIT
 	
 	
 MAIN____START_OF_MAIN:
 	call	GET_BUTTON_STATE
+
+	call	SET_PORT_D_HIGH_OR_LOW
+	;; ldi	r16, 0b11111111	
+	;; ldi	r17, 0b11111111
+	;; call	BUSY_WAIT
+	
 	cpi	r16, 0
 	breq	MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION
 	
-;	call	SET_PortD_HIGH_OR_LOW ;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
+;	call	SET_PORT_D_HIGH_OR_LOW ;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
 
 	call	MAIN_MENU
 	
@@ -214,7 +221,7 @@ MAIN____START_OF_MAIN:
 	
 MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 ;	ldi	r16, enRelay
-	;; call	SET_PortD_HIGH_OR_LOW
+	;; call	SET_PORT_D_HIGH_OR_LOW
 	
 
 	
@@ -238,8 +245,9 @@ MAIN____DISPLAY_TIME_AND_NEXT_ACTIVATION:
 	;; want 1's for button presses) with int2 (PB2) masked out.
 GET_BUTTON_STATE:; Enter, up, down, left and right are all connnected to Port B.
 	in	r16, PinB	  ; Load A.
-	ori	r16, low(int2Pin) ; Mask out clock signal (set to high.)
-	com	r16		  ; One's complement (inverts all bits.)
+	ori	r16, int2Pin
+	;; andi	r16, comInt2Pin ; Mask out clock signal (set to high.)
+	com	r16		  ; One's complement (inverts all bits.) Pull up's are set on pins.
 	ret
 
 
@@ -251,18 +259,22 @@ MAIN_MENU:
 	push	r30
 	push	r31
 
+	;; push	r16
+	;; ldi	r17, buttonPressDelaySquaredComp ; Add delay as button was just pressed.
+	;; ldi	r16, buttonPressDelayLinearComp
+	;; call	BUSY_WAIT
+	;; pop	r16
+
 	clr	r19		; Set menuPos counter to 0.
 	mov	r20, r19	; Set last menuPos counter to r19 (menuPos).
 
 MAIN_MENU____MENU_LOOP:
 	;; Add delay affter call to GET_BUTTON_STATE (is also called before
 	;; calling this rutine.)
-	call SCROLL_LCD
-	;; ldi	r17, buttonPressDelaySquaredComp
-	;; ldi	r16, buttonPressDelayLinearComp
-	;; call	BUSY_WAIT
+	;call SCROLL_LCD
 	
 	call	GET_BUTTON_STATE
+	call	SET_PORT_D_HIGH_OR_LOW
 	mov	r18, r16	; Check up and down button state. ==============
 	ldi	r17, upButton
 	and	r18, r17
@@ -295,18 +307,28 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 	;; changed we use r19 to index into a jump table. Otherwise we loop
 	;; again.
 	cp	r19, r20
-	breq	MAIN_MENU____MENU_LOOP
+	breq	MAIN_MENU____TO_MENU_LOOP
 	mov	r20, r19	; Update last menuPos counter.
 	mov	r16, r19	; Set up arg for UPDATE_MENU.
 
 	call	UPDATE_MENU
 
-	;; 	call	SCROLL_LCD
 	;; ldi	r17, buttonPressDelaySquaredComp ; Add delay before scrolling after updating menu and add delay before next button read.
 	;; ldi	r16, buttonPressDelayLinearComp
 	;; call	BUSY_WAIT
 
 
+MAIN_MENU____TO_MENU_LOOP:	; We have to call SCROLL_LCD before the next loop.
+
+	push	r17
+	push	r16
+	ldi	r17, buttonPressDelaySquaredComp ; Add delay before scrolling after updating menu and add delay before next button read.
+	ldi	r16, buttonPressDelayLinearComp
+	call	BUSY_WAIT
+	pop	r16
+	pop	r17
+	
+	call SCROLL_LCD
 	rjmp	MAIN_MENU____MENU_LOOP
 
 	pop	r31
@@ -476,6 +498,9 @@ CLEAR_SCROLL_STATE:
 	ret
 
 
+	;; The value in r16 is added to the length of the string pointer to by
+	;; r30:r31 (assuming that's the right endianness.) The calculated length
+	;; is stored in currentMaxLineLen.
 UPDATE_CURRENT_MAX_LINE_LEN:
 	push	r16
 	push	r17
@@ -500,7 +525,7 @@ UPDATE_CURRENT_MAX_LINE_LEN____UPDATE_MAX_LINE_LEN:
 	brsh	UPDATE_CURRENT_MAX_LINE_LEN____EXIT ; Don't update currentMaxLineLen. (brsh = Branch if Same or Higher)
 	st	Z, r17
 
-	;; call	SET_PortD_HIGH_OR_LOW 
+	;; call	SET_PORT_D_HIGH_OR_LOW 
 
 UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 
@@ -593,10 +618,13 @@ SCROLL_LCD:
 	dec	r16		; No branch if less than or equal.
 	cpi	r16, displayWidth	; Will scroll if both lines are of length 0 (This shouldn't be the case!)
 	brlo	SCROLL_LCD____NO_SCROLL_NEEDED
+	
 	;; Scrolling is needed. Check if it's time to scroll yet.
-	call	CHECK_IF_SCROLL_LCD_TIME_YET
+				; ======================== SUSPECT CODE! ===========
+	call	CHECK_IF_SCROLL_LCD_TIME_YET ; =========== SUSPECT CODE! ===========
 	cpi	r16, TRUE
-	brne	SCROLL_LCD____NO_SCROLL_NEEDED
+	brne	SCROLL_LCD____NO_SCROLL_NEEDED ; ========= SUSPECT CODE! ===========
+				; ======================== SUSPECT CODE! ===========
 
 	ldi	r30, low(2*currentMaxLineLen) ; SCROLL_LCD_PROPER needs currentMaxLineLen in r16.
 	ldi	r31, high(2*currentMaxLineLen)
@@ -622,7 +650,7 @@ CHECK_IF_SCROLL_LCD_TIME_YET:
 	push	r30
 	push	r31
 	
-	ldi	r30, low(2*scrollLCD) ; Load address of counter.
+	ldi	r30, low(2*scrollLCD)
 	ldi	r31, high(2*scrollLCD)
 	ld	r16, Z
 	ldi	r17, FALSE
@@ -632,150 +660,7 @@ CHECK_IF_SCROLL_LCD_TIME_YET:
 	pop	r30
 	pop	r17
 	ret
-;; 	push	r17	; We don't bother with r16 because we are using it for a return value.
-;; 	push	r18
-;; 	push	r19
-;; 	;; push	r20
-;; 	push	r30
-;; 	push	r31
-
-;; 	ldi	r16, FALSE	; Ret value.
-
-;; 	ldi	r30, low(2*interfaceTimer)
-;; 	ldi	r31, high(2*interfaceTimer)
-;; 	ld	r17, Z		; r17 = interfaceTimer.
-;; 	ldi	r30, low(2*lcdScrollInterfaceTimer)
-;; 	ldi	r31, high(2*lcdScrollInterfaceTimer)
-;; 	ld	r18, Z		; r18 = lcdScrollInterfaceTimer (used to check if interface time has changed.)
-;; 	;; mov	r16, r18
-;; 	;; call	SET_PortD_HIGH_OR_LOW
-;; 	;; ldi	r16, FALSE	; Ret value.
-;; 	cp	r18, r17
-;; 	breq	CHECK_IF_SCROLL_LCD_TIME_YET____RETURN
-
-;; 	;; InterfaceTimer has changed since this rutine was last called. Update
-;; 	st	Z, r17		; lcdScrollInterfaceTimer.
 	
-;; 	push	r16		; Setup for use with ret at top of rutine.
-;; 	;; Get abs difference between
-;; 	mov	r16, r17	; r16 <- Interface timer.
-;; 	mov	r17, r18	; r17 <- LCD scroll interface timer.
-;; 	call	GET_ABS_DIFFERENCE ; Diff returned via r16.
-;; 	;; mov	r18, r16	; Copy difference to r18.
-
-;; 	ldi	r30, low(2*lcdScrollInterfaceTimerProper)
-;; 	ldi	r31, high(2*lcdScrollInterfaceTimerProper)
-;; 	ld	r17, Z		; r17 = lcdScrollInterfaceTimerProper (used as actual LCD timer.)
-;; 	;; mov	r20, r16	; Save difference.
-;; 	add	r16, r17	; Add difference (how many times timer0 interrupt has run since the last time this rutine was called.)
-	
-;; 	mov	r19, r16	; Back up (lcdScrollInterfaceTimerProper + diff)	
-;; 	ldi	r18, lcdScrollInterfaceTimerProperMax
-;; 	;; brcs	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER ; r17 overflowed.
-;; 	; r16 = (proper + diff), r17 = proper (old val) and r18 = lcdScrollInterfaceTimerProperMax.
-;; 	call	CHECK_IF_OVER_MAX_OR_WRAPED
-;; 	cpi	r16, FALSE
-;; 	pop	r16		; Restore current ret value (doesn't set any flags!)
-;; 	breq	CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER
-;; 	; LcdScrollInterfaceTimerProper has been updated (because max is probably not 255.) Copy to r19 for later saving.
-;; 	mov	r19, r17
-	
-;; 	;; cpi	r17, lcdScrollInterfaceTimerProperMax
-;; 	;; brlo	CHECK_IF_SCROLL_LCD_TIME_YET____ ; If updated lcdScrollInterfaceTimerProper is < lcdScrollInterfaceTimerProperMax.
-;; 	;; clr	r17		; We reached lcdScrollInterfaceTimerProperMax...
-;; 	;; ;; The rutine has been called AND seen that interfaceTimer has changed
-;; 	;; since the last call lcdScrollInterfaceTimerProper times.
-;; 	ldi	r16, TRUE	; Return true to signal that the LCD should be scrolled.
-
-;; CHECK_IF_SCROLL_LCD_TIME_YET____SAVE_TIMER:
-;; 	;; ;; ============================= TMP ===================================
-;; 	;; ;; ============================= TMP ===================================
-;; 	;; push	r16
-;; 	;; mov	r16, r19
-;; 	;; call	SET_PortD_HIGH_OR_LOW
-;; 	;; pop	r16
-;; 	;; ;; ============================= TMP ===================================
-;; 	;; ;; ============================= TMP ===================================
-;; 	st	Z, r19
-
-;; CHECK_IF_SCROLL_LCD_TIME_YET____RETURN:
-;; 	;; ============================= TMP ===================================
-;; 	;; ============================= TMP ===================================
-;; 	push	r16
-;; 	ldi	r17, 0b00111111
-;; 	ldi	r16, 0b00111111
-;; 	call	BUSY_WAIT
-;; 	pop	r16
-;; 	;; ============================= TMP ===================================
-;; 	;; ============================= TMP ===================================
-	
-;; 	pop	r31
-;; 	pop	r30
-;; 	;; pop	r20
-;; 	pop	r19
-;; 	pop	r18
-;; 	pop	r17
-;; 	ret
-
-
-;; 	;; Returns (via r16) the absolute difference between r16 and r17.
-;; GET_ABS_DIFFERENCE:		; Max of 12.5 cycles (including ret.)
-;; 	push	r18
-
-;; 	mov	r18, r16	; Back up r16.
-;; 	sub	r16, r17	; Sets Z, C, N, V, H
-;; 	brlo	GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER ; "If(C = 1)..." (therefore we assume C is set when r16 is less then r17.)
-
-;; 	pop	r18		; r16 was > r17. Our work is done! return.
-;; 	ret
-
-;; GET_ABS_DIFFERENCE____DO_SUB_IN_REVERSE_ORDER: 	; r16 was less then r17. We need to do the sub the other way around.
-;; 	sub	r17, r18	; r18 = value of r16 at time of call.
-;; 	mov	r16, r17	; Save difference to r16.
-	
-;; 	pop	r18
-;; 	ret
-
-
-;; 	;; Returns TRUE (via r16) if r16 (newVal) is less than 
-;; 	;; r17 (oldVal) (overflow) or if r16 >= valMax. Returns "real" newVal in
-;; 	;; r17 (adjusted relative to max) if returning TRUE.
-;; 	;; Note: r16 = newVal, r17 = oldVal and r18 = max.
-;; CHECK_IF_OVER_MAX_OR_WRAPED:
-;; 	cp	r16, r17
-;; 	brsh	CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX ; If newVal is greater than or equal to oldVal.
-;; 	push	r19	   ;	Only in this code path.
-	
-;; 	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
-;; 	ldi	r19, 0xFF
-;; 	sub	r19, r18
-;; 	inc	r19		; (255 - valMax) +1.
-;; 	add	r17, r19
-	
-;; 	ldi	r16, TRUE	; newVal is less then oldVal (we've overflowed.)
-	
-;; 	pop	r19
-;; 	ret
-
-;; 	;; NewVal is greater than or equal to oldVal (no overflow.)
-;; CHECK_IF_OVER_MAX_OR_WRAPED____CHECK_FOR_MORE_THEN_MAX: ; Check if over max.
-;; 	cp	r16, r18
-;; 	brlo	CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE
-;; 	;; push	r19
-	
-;; 	mov	r17, r16	; 2nd ret val ("real" newVal) stored in r17
-;; 	sub	r17, r18	; (newVal - valMax) +1.
-;; 	inc	r17
-	
-;; 	ldi	r16, TRUE	; NewVal hasn't wraped around and is greater than or equal to max.
-
-;; 	;; pop	r19
-;; 	ret
-
-;; CHECK_IF_OVER_MAX_OR_WRAPED____RET_FALSE:
-;; 	ldi	r16, FALSE	; Although newVal has been updated it hasn't wraped around and is not greater than or equal to max.
-;; 	ret
-
 
 	;; Takes r16 as an argument should contain *currentMaxLineLen.
 SCROLL_LCD_PROPER:
@@ -787,7 +672,7 @@ SCROLL_LCD_PROPER:
 	ldi	r30, low(2*currentScrollLen)
 	ldi	r31, high(2*currentScrollLen)
 	ld	r17, Z		; Load *currentScrollLen into r17
-	subi	r16, displayWidth ; We've already made sure r16 < displayWidth in SCROLL_LCD.
+	subi	r16, displayWidth ; We've already made sure r16 > displayWidth in SCROLL_LCD.
 	cp	r17, r16
 	breq	SCROLL_LCD_PROPER____FAST_SCROLL_BACK ; We've scrolled to the end of *currentMaxLineLen.
 	;; Scroll LCD (one char in from right.) vvv   vvv   vvv
@@ -798,23 +683,23 @@ SCROLL_LCD_PROPER:
 	rjmp	SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET
 	
 	;; Scroll LCD (back to start.) vvv   vvv   vvv
-SCROLL_LCD_PROPER____FAST_SCROLL_BACK_START:
-	push	r17		; Add delay before scoll back.
+;; SCROLL_LCD_PROPER____FAST_SCROLL_BACK_START:
+	;; push	r17		; Add delay before scoll back.
 	;; ldi	r17, 0b00000001
 	;; ldi	r16, 0b00000001
 	;; call	BUSY_WAIT
-	pop	r17
+	;; pop	r17
 SCROLL_LCD_PROPER____FAST_SCROLL_BACK:
 	ldi	r16, shiftDisplayRight
 	call	SEND_LCD_INSTRUCTION
 	dec	r17
 	cpi	r17, 0b0
 	brne	SCROLL_LCD_PROPER____FAST_SCROLL_BACK
-	push	r17		; Add delay after scroll back.
+	;; push	r17		; Add delay after scroll back.
 	;; ldi	r17, 0b00000001
 	;; ldi	r16, 0b00000001
 	;; call	BUSY_WAIT
-	pop	r17
+	;; pop	r17
 	;; Scroll LCD                  ^^^   ^^^   ^^^
 	
 SCROLL_LCD_PROPER____SCROLL_LCD_PROPER_RET:
@@ -866,14 +751,14 @@ INIT:
 	call	SET_DDRD
 	; Set portD to all low (the relay is connected to this port.)
 	ldi	r16, low(allLow)
-	call	SET_PortD_HIGH_OR_LOW
+	call	SET_PORT_D_HIGH_OR_LOW
 	
 	ldi	r16, low(allLow) ; Set the following DDRs to inputs.
 	;; ldi	r17, low(portBPullupDownValues)
 	call	SET_DDRB	 ; Port B is used only for inputs.
 	;ldi	r16, low(allLow) ; Set to all pull down resistors for portB.
 	ldi	r16, low(allHigh) ; Set pull up resistors.
-	call	SET_PortB_HIGH_OR_LOW
+	call	SET_PORT_B_HIGH_OR_LOW
 
 	call	INIT_LCD
 	call	ENABLE_INT2
@@ -928,22 +813,22 @@ SET_DDRD:
 	;; The SET_PortX_HIGH_OR_LOW rutines can be used to set pull up/down
 	;; resistors when the port is set as an input or they can be used set
 	;; the output of the port high / low
-SET_PortA_HIGH_OR_LOW:
+SET_PORT_A_HIGH_OR_LOW:
 	out	PortA, r16
 	ret
 
 
-SET_PortB_HIGH_OR_LOW:
+SET_PORT_B_HIGH_OR_LOW:
 	out	PortB, r16
 	ret
 
 
-SET_PortC_HIGH_OR_LOW:
+SET_PORT_C_HIGH_OR_LOW:
 	out	PortC, r16
 	ret
 
 
-SET_PortD_HIGH_OR_LOW:
+SET_PORT_D_HIGH_OR_LOW:
 	out	PortD, r16
 	ret
 
@@ -967,7 +852,7 @@ SEND_LCD_INSTRUCTION:
 	ldi	r16, 0b0
 	out	PortC, r16
 	;; toggle enable bit to send instruction.
-	ldi	r16, low(Enable)
+	ldi	r16, Enable
 	out	PortC, r16	; Send instruction to display.
 	ldi	r16, 0b00000001	; Add a small delay to make sure instruction is sent.
 	ldi	r17, 0b00000001
@@ -1003,6 +888,7 @@ BUSY_WAIT:			;===============================================
 	push	r31
 	push	r30
 	push	r29
+	
 	clr	r31
 BUSY_WAIT____LOOP_0_START:
 	inc	r31
@@ -1023,6 +909,7 @@ BUSY_WAIT____LOOP_2_START:
 	
 	cp	r31, r17
 	brne	BUSY_WAIT____LOOP_0_START
+	
 	pop	r29	
 	pop	r30
 	pop	r31
@@ -1047,10 +934,10 @@ ENABLE_TIMER0:
 	clr	r16
 	st	Z, r16		; Set scrollLCDTimer to a defined initial value.
 
-	ldi	r30, low(2*scrollLCD)
-	ldi	r31, high(2*scrollLCD)
-	ldi	r16, FALSE
-	st	Z, r16		; Set scrollLCDTimer to a defined initial value.
+	;; ldi	r30, low(2*scrollLCD)
+	;; ldi	r31, high(2*scrollLCD)
+	;; ldi	r16, FALSE
+	;; st	Z, r16		; Set scrollLCD to a defined initial value.
 	
 	; Enable Timer0 overflow interrupts.
 	ldi	r16, 0x01
@@ -1100,12 +987,10 @@ TIM0_OVF:	; Timer0 Overflow Handler
 	push	r30
 	push	r31
 
-
 	ldi	r30, low(2*scrollLCDTimer)
 	ldi	r31, high(2*scrollLCDTimer)
 	ld	r16, Z		; Load scrollLCDTimer.
 	inc	r16		; Inc first to account for off by one error.
-	call	SET_PORTD_HIGH_OR_LOW
 	cpi	r16, lcdScrollTimerMax
 	brne	TIM0_OVF____EXIT ; Branch if scrollLCDTimer != lcdScrollTimerMax.
 
@@ -1134,7 +1019,7 @@ ANA_COMP:	; Analog Comparator Handler
 TWSI:		; Two-wire Serial Interface Handler
 EXT_INT2:	; IRQ2 Handler Note that another second has passed
 ;	ldi	r16, low(allHigh) ;
-	;call	SET_PortD_HIGH_OR_LOW
+	;call	SET_PORT_D_HIGH_OR_LOW
 	;; push	r30
 	;; push	r31
 	;; push	r16
