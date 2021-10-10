@@ -161,13 +161,15 @@
 	;; ========================= Main Menu Strings =========================
 	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
 	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
-
+	;; Main menu str's
 	mainMenuSelectionStr:	.db "~", 0 ; "~" becomes a right facing arrow!
 	mainMenuSetTimeStr:	.db "Set Time", 0 ; Item 1.
 	mainMenuSetDateStr:	.db "Set Date", 0 ; Item 2.
 	mainMenuSetActivationTimeStr:	.db "Set Activation Time", 0 ; Item 3.
 	mainMenuDeleteActivationTimeStr:	.db "Delete Activation Time", 0 ; Item 4.
 	mainMenuSetBrightnessStr:	.db "Set Brightness", 0 ; Item 5.
+	;; Set time str's
+	setTimeSetHoursStr:	.db "   <Set Hour>", 0
 
 	
 	;; =====================================================================
@@ -274,8 +276,25 @@ MAIN_MENU____MENU_LOOP:
 	;call SCROLL_LCD
 	
 	call	GET_BUTTON_STATE
-	call	SET_PORT_D_HIGH_OR_LOW
-	mov	r18, r16	; Check up and down button state. ==============
+	call	SET_PORT_D_HIGH_OR_LOW ; TMP=======TMP=========TMP==========TMP`=`=`=`=`==`TMP=`=`=`=`=`=`=TMP`=`=`=`=`=`=`=TMP`=`=`=`=`TMP=`=`=`=`=`=`TMP
+	;; Check enter button state. ==============
+	mov	r18, r16
+	ldi	r17, enterButton
+	and	r18, r17
+	cp	r18, r17
+	brne	MAIN_MENU____CHECK_UP_BUTTON ; Has the user used the enter button?
+
+	;; Setup arg for ENTER_SUB_MENU (last menuPos counter). We don't want to
+	;; take into consideration the simultanious pressing of the up and or
+	;; down buttons with the enter button, hence the use of last menuPos
+	;; counter.
+	mov	r16, r20
+	call	ENTER_SUB_MENU
+
+	rjmp	MAIN_MENU____TO_MENU_LOOP
+	
+MAIN_MENU____CHECK_UP_BUTTON:
+	mov	r18, r16	; Prior and clobbers r18.
 	ldi	r17, upButton
 	and	r18, r17
 	cp	r18, r17
@@ -287,9 +306,9 @@ MAIN_MENU____MENU_LOOP:
 	clr	r19
 
 MAIN_MENU____CHECK_DOWN_BUTTON:
-	mov	r18, r16
+	mov	r18, r16	; Prior and clobbers r18.
 	ldi	r17, downButton
-	and	r18, r17
+	and	r18, r17	; r18 contains ret val of GET_BUTTON_STATE.
 	cp	r18, r17
 	brne	MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED
 
@@ -311,12 +330,7 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 	mov	r20, r19	; Update last menuPos counter.
 	mov	r16, r19	; Set up arg for UPDATE_MENU.
 
-	call	UPDATE_MENU
-
-	;; ldi	r17, buttonPressDelaySquaredComp ; Add delay before scrolling after updating menu and add delay before next button read.
-	;; ldi	r16, buttonPressDelayLinearComp
-	;; call	BUSY_WAIT
-
+	call	UPDATE_MAIN_MENU
 
 MAIN_MENU____TO_MENU_LOOP:	; We have to call SCROLL_LCD before the next loop.
 
@@ -328,7 +342,7 @@ MAIN_MENU____TO_MENU_LOOP:	; We have to call SCROLL_LCD before the next loop.
 	pop	r16
 	pop	r17
 	
-	call SCROLL_LCD
+	call	SCROLL_LCD
 	rjmp	MAIN_MENU____MENU_LOOP
 
 	pop	r31
@@ -340,36 +354,27 @@ MAIN_MENU____TO_MENU_LOOP:	; We have to call SCROLL_LCD before the next loop.
 	ret
 
 
-UPDATE_MENU:
+UPDATE_MAIN_MENU:
 	push	r17
-	;; push	r18
 	push	r30
 	push	r31
 
 	call	CLEAR_LCD
-	
-	;; TMP=============================================================================================================================================
-	;; TMP=============================================================================================================================================
-	;; ldi	TCNT0, 0b0	  ; Load timer 0 with 0.
-	;; ldi	TCCR0, 0b00000011 ; Set clock source for timer 0 to clk / 64.
-	;; TMP=============================================================================================================================================
-	;; TMP=============================================================================================================================================
-	
 	call	CLEAR_SCROLL_STATE ; Set currentMaxLineLen and currentScrollLen to 0.
 	;; Load address of jump table and add offset into current menu item selected.
-	ldi	r30, low(UPDATE_MENU____JUMP_TABLE)
+	ldi	r30, low(UPDATE_MAIN_MENU____JUMP_TABLE)
 	add	r30, r16
-	ldi	r31, high(UPDATE_MENU____JUMP_TABLE)
+	ldi	r31, high(UPDATE_MAIN_MENU____JUMP_TABLE)
 	ijmp			; PC <- Z
 
-UPDATE_MENU____JUMP_TABLE:
-	rjmp	UPDATE_MENU____DISPLAY_ITEM_1
-	rjmp	UPDATE_MENU____DISPLAY_ITEM_2
-	rjmp	UPDATE_MENU____DISPLAY_ITEM_3
-	rjmp	UPDATE_MENU____DISPLAY_ITEM_4
-	rjmp	UPDATE_MENU____DISPLAY_ITEM_5
+UPDATE_MAIN_MENU____JUMP_TABLE:
+	rjmp	UPDATE_MAIN_MENU____DISPLAY_ITEM_1
+	rjmp	UPDATE_MAIN_MENU____DISPLAY_ITEM_2
+	rjmp	UPDATE_MAIN_MENU____DISPLAY_ITEM_3
+	rjmp	UPDATE_MAIN_MENU____DISPLAY_ITEM_4
+	rjmp	UPDATE_MAIN_MENU____DISPLAY_ITEM_5
 
-UPDATE_MENU____DISPLAY_ITEM_1:
+UPDATE_MAIN_MENU____DISPLAY_ITEM_1:
 	ldi	r30, low(2*mainMenuSelectionStr) ; Current selection arrow.
 	ldi	r31, high(2*mainMenuSelectionStr)
 	call	WRITE_TO_LCD
@@ -387,9 +392,9 @@ UPDATE_MENU____DISPLAY_ITEM_1:
 	call	UPDATE_CURRENT_MAX_LINE_LEN ; Update currentMaxLineLen.
 	call	WRITE_TO_LCD
 	
-	rjmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
-UPDATE_MENU____DISPLAY_ITEM_2:
+UPDATE_MAIN_MENU____DISPLAY_ITEM_2:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
 	call	WRITE_TO_LCD
@@ -407,9 +412,9 @@ UPDATE_MENU____DISPLAY_ITEM_2:
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
-	rjmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
-UPDATE_MENU____DISPLAY_ITEM_3:
+UPDATE_MAIN_MENU____DISPLAY_ITEM_3:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
 	call	WRITE_TO_LCD
@@ -427,9 +432,9 @@ UPDATE_MENU____DISPLAY_ITEM_3:
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
-	rjmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
-UPDATE_MENU____DISPLAY_ITEM_4:
+UPDATE_MAIN_MENU____DISPLAY_ITEM_4:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
 	call	WRITE_TO_LCD
@@ -447,9 +452,9 @@ UPDATE_MENU____DISPLAY_ITEM_4:
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
-	rjmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
-UPDATE_MENU____DISPLAY_ITEM_5:
+UPDATE_MAIN_MENU____DISPLAY_ITEM_5:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
 	call	WRITE_TO_LCD
@@ -467,14 +472,148 @@ UPDATE_MENU____DISPLAY_ITEM_5:
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
 	
-	rjmp	UPDATE_MENU____EXIT_MENU_UPDATE
+	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 
-UPDATE_MENU____EXIT_MENU_UPDATE:
+UPDATE_MAIN_MENU____EXIT_MENU_UPDATE:
 
 	pop	r31
 	pop	r30
-	;; pop	r18
 	pop	r17
+	ret
+
+
+;; Some of these might not really be menues. However the name ENTER_SUB_MENU
+;; seems to make enough sense.
+ENTER_SUB_MENU:			;  last menuPos counter is passed in via r16.
+	push	r30
+	push	r31
+
+	call	CLEAR_LCD
+
+	ldi	r30, low(ENTER_SUB_MENU____JUMP_TABLE)
+	add	r30, r16
+	ldi	r31, high(ENTER_SUB_MENU____JUMP_TABLE)
+	ijmp			; PC <- Z
+
+ENTER_SUB_MENU____JUMP_TABLE:
+	rjmp	ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_1
+	rjmp	ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_2
+	rjmp	ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_3
+	rjmp	ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_4
+	rjmp	ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_5
+
+ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_1:
+	call	SET_TIME
+	rjmp	ENTER_SUB_MENU____EXIT
+	
+ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_2:
+	call	SET_BRIGHTNESS
+	rjmp	ENTER_SUB_MENU____EXIT
+	
+ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_3:
+	call	DELETE_ACTIVATION_TIME
+	rjmp	ENTER_SUB_MENU____EXIT
+	
+ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_4:
+	call	SET_ACTIVATION_TIME
+	rjmp	ENTER_SUB_MENU____EXIT
+	
+ENTER_SUB_MENU____JUMP_TABLE____ENTER_SUB_MENU_5:
+	call	SET_DATE
+
+ENTER_SUB_MENU____EXIT:	
+	
+	pop	r31
+	pop	r30
+	ret
+
+
+SET_TIME:
+	push	r16
+	push	r17
+	push	r18
+	;; R19 is used to note which of the time fields (hours, minutes and
+	;; seconds) have been updated so far. We will refere to r19 as
+	;; "SET_TIME_STATUS". We set SET_TIME_STATUS to 0x00 for not updated,
+	;; 0x01 for hours updated, 0x02 for hours and minutes updated and 0x03
+	;; for hours, minutes and seconds updated. When SET_TIME_STATUS is set
+	;; to 0x03 we reset the decade counters and update the the time value
+	;; stored in SRAM with the new time value and exit.
+	PUSH	r19
+	push	r30
+	push	r31
+
+	ldi	r30, low(2*setTimeSetHoursStr)
+	ldi	r31, high(2*setTimeSetHoursStr)
+	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	call	UPDATE_CURRENT_MAX_LINE_LEN
+	call	WRITE_TO_LCD
+
+	call	SWITCH_TO_SECOND_LCD_LINE
+
+SET_TIME____GET_BUTTON_STATE:
+	;; Read in hour.
+	call	GET_BUTTON_STATE
+	mov	r18, r16
+	ldi	r17, enterButton
+	and	r18, r17
+	cp	r18, r17
+	brne	SET_TIME____CHECK_UP_BUTTON
+	;; Enter was pressed. Update SET_TIME_STATUS.
+	rjmp	SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS
+
+SET_TIME____CHECK_UP_BUTTON:
+	mov	r18, r16
+	ldi	r17, upButton
+	and	r18, r17
+	cp	r18, r17
+	brne	SET_TIME____CHECK_DOWN_BUTTON
+	;; Up button was pressed (increment currently selected field.)
+
+	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
+
+SET_TIME____CHECK_DOWN_BUTTON:
+	;; =====================================================================
+	;; More stuff like above here ==========================================
+	;; =====================================================================
+
+	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
+SET_TIME____DISPLAY_TIME_FIELDS:
+	rjmp	SET_TIME____GET_BUTTON_STATE
+
+	;; Here we check SET_TIME_STATUS. If it is 0x03 we follow the procedure
+	;; layed our in the comment at that start of this rutine. Otherwise we
+	;; increment SET_TIME_STATUS and loop back to SET_TIME____GET_BUTTON_STATE.
+SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS:
+	inc	r19		; We're updating the next time field now.
+	cpi	r19, 0x03
+	brne	SET_TIME____GET_BUTTON_STATE
+
+; Reset decade counters and update time in SRAM.
+
+SET_TIME____EXIT:		; Jump here if we are exiting without updating the time.
+	
+	pop	r31
+	pop	r30
+	pop	r19
+	pop	r18
+	pop	r17
+	pop	r16
+	ret
+
+
+SET_BRIGHTNESS:
+	ret
+
+
+DELETE_ACTIVATION_TIME:
+	ret
+
+
+SET_ACTIVATION_TIME:
+	ret
+
+SET_DATE:
 	ret
 
 
