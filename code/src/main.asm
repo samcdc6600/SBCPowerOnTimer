@@ -480,8 +480,22 @@ UPDATE_MENU____EXIT_MENU_UPDATE:
 
 CLEAR_SCROLL_STATE:
 	push	r16
+
+	;; The next two groups of instructions (not including the two pushs) 
+	;; ensure that we wait roughly a full character scroll time before
+	;; scrolling again.
+	;; Reset Timer/ Counter Register 0 back to 0.
+	ldi	r16, timerCounterRegisterInitialVal
+	out	TCNT0, r16	; Set Timer/Counter Register 0 back to 0.
+	
 	push	r30
 	push	r31
+
+	;; Reset scrollLCDTimer.
+	ldi	r30, low(2*scrollLCDTimer)
+	ldi	r31, high(2*scrollLCDTimer)
+	ldi	r16, 0b0
+	st	Z, r16
 
 	ldi	r30, low(2*currentMaxLineLen) ; Load currentMaxLineLen into Z.
 	ldi	r31, high(2*currentMaxLineLen)
