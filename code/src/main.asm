@@ -32,6 +32,7 @@
 	.set	downButton		= 0b00001000 ; -> PB3
 	.set	leftButton		= 0b00010000 ; -> PB4
 	.set	rightButton		= 0b00100000 ; -> PB5
+	.set	backButton		= 0b01000000 ; -> PB6
 	;	.set	int2Input		= 0b00000100 ; Int 2 is PB2
 ;	.set	notInt2Input		= 0b11111011 ; For when we don't want int2.
 	.set	int2Pin			= 0b00000100
@@ -58,7 +59,7 @@
 	.set	enableWrite	  = 0b00000000
 	.set	registerSelectOn	= 0b10000000
 	.set	registerSelectOff	= 0b00000000
-	;; ==| Display commands (the position of the first 1 indicates the command.) |==
+	;; ==| Display Commands (the position of the first 1 indicates the command.) |==
 	;; DL (data length? = 8 bits), N (number of lines = 2), F (character dimensions = 5 * 8),
 	.set	functionSetData  = 0b00111000 ; that is bits 4, 3 and 2.
 	;; D (display on/off = on), C (cursor on/off = on), B (cursor blinking = on).
@@ -101,7 +102,7 @@
 	;; ======================== Start Data Segment! ========================
 	;; =====================================================================
 	.dseg
-	;; ==| LCD related variables |==
+	;; ==| LCD Related Variables |==
 	;; Sould only be changed by SWITCH_TO_SECOND_LCD_LINE (after INIT_LCD.)
 	;; currentLCDLine:		.byte 1 ; 0 for first line ff for second line.
 	;; Stores the length of the longest line on the display.
@@ -111,7 +112,7 @@
 	currentScrollLen:	.byte 1
 	;; Stores the current second (in the current minute.)
 	secondsInCurrentMinute:	.byte 1
-	;; ==| Backlight related variables |==
+	;; ==| Backlight Related Variables |==
 	;; Should be set to TRUE if the back light is off and FALSE otherwise.
 	backLightOff:		.byte 1
 	scrollLCD:		.byte 1
@@ -127,6 +128,13 @@
 	;; ;; Note that lcdScrollInterfaceTimerProper is incremented before the compare.
 	;; lcdScrollInterfaceTimer:	.byte 1
 	;; lcdScrollInterfaceTimerProper:	.byte 1
+	;; ==| Time And Date Related Variables |==
+	currentYear:		.byte 1
+	currentMonth:		.byte 1
+	currentDay:		.byte 1
+	currentHour:		.byte 1
+	currentMinute:		.byte 1
+	currentSecond:		.byte 1
 	
 	
 	;; ======================== Start Code Segment! ========================
@@ -539,7 +547,10 @@ SET_TIME:
 	;; for hours, minutes and seconds updated. When SET_TIME_STATUS is set
 	;; to 0x03 we reset the decade counters and update the the time value
 	;; stored in SRAM with the new time value and exit.
-	PUSH	r19
+	push	r19
+	push	r20		; R20 is used to store hours temporarily.
+	push	r21		; R21 is used to store minutes temporarily.
+	push	r22		; R22 is used to store seconds temporarily.
 	push	r30
 	push	r31
 
@@ -551,6 +562,17 @@ SET_TIME:
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 
+	;; Load current time into temp locations.
+	ldi	r30, low(2*currentHour)
+	ldi	r31, high(2*currentHour)
+	ld	r20, Z		; Load current hour.
+	ldi	r30, low(2*currentMinute)
+	ldi	r31, high(2*currentMinute)
+	ld	r21, Z		; Load current minute.
+	ldi	r30, low(2*currentSecond)
+	ldi	r31, high(2*currentSecond)
+	ld	r22, Z		; Load current second.
+	
 SET_TIME____GET_BUTTON_STATE:
 	;; Read in hour.
 	call	GET_BUTTON_STATE
@@ -573,9 +595,27 @@ SET_TIME____CHECK_UP_BUTTON:
 	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
 
 SET_TIME____CHECK_DOWN_BUTTON:
-	;; =====================================================================
-	;; More stuff like above here ==========================================
-	;; =====================================================================
+	mov	r18, r16
+	ldi	r17, downButton
+	and	r18, r17
+	cp	r18, r17
+	brne	SET_TIME____DISPLAY_TIME_FIELDS
+	;; Down button was pressed (decrement currently selected field.)
+
+	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
+
+SET_TIME____CHECK_BACK_BUTTON:
+	mov	r18, r16
+	ldi	r17, backButton
+	and	r18, r17
+	cp	r18, r17
+	brne	SET_TIME____GET_BUTTON_STATE ; No relevant button was pressed, loop again.
+	;; Down button was pressed (decrement currently selected field.)
+	
+	subi	r19, 0b01
+	brpl	SET_TIME____GET_BUTTON_STATE ; Branch if plus [if (N = 0) then PC <- PC + k + 1].
+	; R19 went negative and therefore we're updating the previous field (or exiting without updating the time.)
+	rjmp	SET_TIME____EXIT
 
 	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
 SET_TIME____DISPLAY_TIME_FIELDS:
@@ -585,9 +625,19 @@ SET_TIME____DISPLAY_TIME_FIELDS:
 	;; layed our in the comment at that start of this rutine. Otherwise we
 	;; increment SET_TIME_STATUS and loop back to SET_TIME____GET_BUTTON_STATE.
 SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS:
-	inc	r19		; We're updating the next time field now.
+	inc	r19		; We're updating the next time field (or exiting and updating the time.)
 	cpi	r19, 0x03
 	brne	SET_TIME____GET_BUTTON_STATE
+	;; Enter was pressed while setting seconds... Update time and return.
+	ldi	r30, low(2*currentHour)
+	ldi	r31, high(2*currentHour)
+	st	Z, r20		; Set hours.
+	ldi	r30, low(2*currentMinute)
+	ldi	r31, high(2*currentMinute)
+	st	Z, r21		; Set minutes.
+	ldi	r30, low(2*currentSecond)
+	ldi	r31, high(2*currentSecond)
+	st	Z, r22		; Set seconds.
 
 ; Reset decade counters and update time in SRAM.
 
@@ -595,6 +645,9 @@ SET_TIME____EXIT:		; Jump here if we are exiting without updating the time.
 	
 	pop	r31
 	pop	r30
+	pop	r22
+	pop	r21
+	pop	r20
 	pop	r19
 	pop	r18
 	pop	r17
@@ -913,6 +966,8 @@ INIT:
 	ldi	r16, low(allHigh) ; Set pull up resistors.
 	call	SET_PORT_B_HIGH_OR_LOW
 
+	call	INIT_TIME_AND_DATE
+
 	call	INIT_LCD
 	call	ENABLE_INT2
 	call	ENABLE_TIMER0
@@ -985,6 +1040,39 @@ SET_PORT_D_HIGH_OR_LOW:
 	out	PortD, r16
 	ret
 
+
+INIT_TIME_AND_DATE:		; We initialize all time and date values to 0 here.
+	push	r16
+	push	r17
+	push	r30
+	push	r31
+	
+	ldi	r17, 0b0
+	ldi	r30, low(2*currentYear)
+	ldi	r31, high(2*currentYear)
+	st	Z, r17		; Zero years.
+	ldi	r30, low(2*currentMonth)
+	ldi	r31, high(2*currentMonth)
+	st	Z, r17		; Zero months.
+	ldi	r30, low(2*currentDay)
+	ldi	r31, high(2*currentDay)
+	st	Z, r17		; Zero days.
+	ldi	r30, low(2*currentHour)
+	ldi	r31, high(2*currentHour)
+	st	Z, r17		; Zero hours.
+	ldi	r30, low(2*currentMinute)
+	ldi	r31, high(2*currentMinute)
+	st	Z, r17		; Zero minutes.
+	ldi	r30, low(2*currentSecond)
+	ldi	r31, high(2*currentSecond)
+	st	Z, r17		; Zero seconds.
+
+	pop	r31
+	pop	r30
+	pop	r17
+	pop	r16
+	ret
+	
 	
 INIT_LCD:
 	;; Output display function set command.
