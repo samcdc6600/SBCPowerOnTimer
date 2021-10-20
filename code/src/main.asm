@@ -178,6 +178,8 @@
 	mainMenuSetBrightnessStr:	.db "Set Brightness", 0 ; Item 5.
 	;; Set time str's
 	setTimeSetHoursStr:	.db "   <Set Hour>", 0
+	setTimeSetMinutesStr:	.db "  <Set Minute>", 0
+	setTimeSetSecondsStr:	.db " <Set  Seconds>", 0
 
 	
 	;; =====================================================================
@@ -540,13 +542,14 @@ SET_TIME:
 	push	r16
 	push	r17
 	push	r18
-	;; R19 is used to note which of the time fields (hours, minutes and
-	;; seconds) have been updated so far. We will refere to r19 as
-	;; "SET_TIME_STATUS". We set SET_TIME_STATUS to 0x00 for not updated,
-	;; 0x01 for hours updated, 0x02 for hours and minutes updated and 0x03
-	;; for hours, minutes and seconds updated. When SET_TIME_STATUS is set
-	;; to 0x03 we reset the decade counters and update the the time value
-	;; stored in SRAM with the new time value and exit.
+	;; R19 is used to note which of the temporary time fields (hours,
+	;; minutes and seconds) have been modified so far. We will refere to r19
+	;; as "SET_TIME_STATUS". We set SET_TIME_STATUS to 0x00 for not
+	;; modified, 0x01 for hours modified, 0x02 for hours and minutes
+	;; modified and 0x03 for hours, minutes and seconds modified. When
+	;; SET_TIME_STATUS is set to 0x03 we reset the decade counters and
+	;; update the the time value stored in SRAM with the new time value and
+	;; return from the subroutine.
 	push	r19
 	push	r20		; R20 is used to store hours temporarily.
 	push	r21		; R21 is used to store minutes temporarily.
@@ -554,34 +557,29 @@ SET_TIME:
 	push	r30
 	push	r31
 
-	ldi	r30, low(2*setTimeSetHoursStr)
-	ldi	r31, high(2*setTimeSetHoursStr)
-	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
-	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	;; Returns current hours, minutes and seconds via r20, r21 and r22
+	call	SET_TIME_GET_TIME	; respectively.
 
-	call	SWITCH_TO_SECOND_LCD_LINE
-
-	;; Load current time into temp locations.
-	ldi	r30, low(2*currentHour)
-	ldi	r31, high(2*currentHour)
-	ld	r20, Z		; Load current hour.
-	ldi	r30, low(2*currentMinute)
-	ldi	r31, high(2*currentMinute)
-	ld	r21, Z		; Load current minute.
-	ldi	r30, low(2*currentSecond)
-	ldi	r31, high(2*currentSecond)
-	ld	r22, Z		; Load current second.
+	ldi	r19, 0b0	; 0 for set hours str.
+SET_TIME____PRINTE_CURRENT_TIME_FIELD:
+	mov	r16, r19	; R19 (SET_TIME_STATUS) tells which (h, m or s).
+	call	SET_TIME_PRINT_CURRENT_TIME_FIELD
 	
 SET_TIME____GET_BUTTON_STATE:
-	;; Read in hour.
+	ldi	r17, buttonPressDelaySquaredComp ; Add delay before next button read.
+	ldi	r16, buttonPressDelayLinearComp
+	call	BUSY_WAIT
+
 	call	GET_BUTTON_STATE
 	mov	r18, r16
 	ldi	r17, enterButton
 	and	r18, r17
+	;; mov	r16, r18
+	;; call	SET_PORT_D_HIGH_OR_LOW	
 	cp	r18, r17
 	brne	SET_TIME____CHECK_UP_BUTTON
-	;; Enter was pressed. Update SET_TIME_STATUS.
+	;; =====================================================================
+	;; ENTER PRESSED. Update SET_TIME_STATUS. ==============================
 	rjmp	SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS
 
 SET_TIME____CHECK_UP_BUTTON:
@@ -590,7 +588,8 @@ SET_TIME____CHECK_UP_BUTTON:
 	and	r18, r17
 	cp	r18, r17
 	brne	SET_TIME____CHECK_DOWN_BUTTON
-	;; Up button was pressed (increment currently selected field.)
+	;; =====================================================================
+	;; UP BUTTON PRESSED (increment currently selected field.) =============
 
 	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
 
@@ -599,8 +598,9 @@ SET_TIME____CHECK_DOWN_BUTTON:
 	ldi	r17, downButton
 	and	r18, r17
 	cp	r18, r17
-	brne	SET_TIME____DISPLAY_TIME_FIELDS
-	;; Down button was pressed (decrement currently selected field.)
+	brne	SET_TIME____CHECK_BACK_BUTTON
+	;; =====================================================================
+	;; DOWN BUTTON PRESSED (decrement currently selected field.) ===========
 
 	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
 
@@ -610,11 +610,13 @@ SET_TIME____CHECK_BACK_BUTTON:
 	and	r18, r17
 	cp	r18, r17
 	brne	SET_TIME____GET_BUTTON_STATE ; No relevant button was pressed, loop again.
-	;; Down button was pressed (decrement currently selected field.)
+	;; =====================================================================
+	;; BACK BUTTON PRESSED (decrement currently selected field.) ===========
 	
 	subi	r19, 0b01
-	brpl	SET_TIME____GET_BUTTON_STATE ; Branch if plus [if (N = 0) then PC <- PC + k + 1].
-	; R19 went negative and therefore we're updating the previous field (or exiting without updating the time.)
+	brpl	SET_TIME____PRINTE_CURRENT_TIME_FIELD ; Branch if plus [if (N = 0) then PC <- PC + k + 1].
+	;; R19 went negative and therefore we're updating the previous field (or
+	;; exiting without updating the time.)
 	rjmp	SET_TIME____EXIT
 
 	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
@@ -623,11 +625,12 @@ SET_TIME____DISPLAY_TIME_FIELDS:
 
 	;; Here we check SET_TIME_STATUS. If it is 0x03 we follow the procedure
 	;; layed our in the comment at that start of this rutine. Otherwise we
-	;; increment SET_TIME_STATUS and loop back to SET_TIME____GET_BUTTON_STATE.
+	;; increment SET_TIME_STATUS, call SET_TIME_PRINT_CURRENT_TIME_FIELD and
+	;; loop back to SET_TIME____GET_BUTTON_STATE.
 SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS:
 	inc	r19		; We're updating the next time field (or exiting and updating the time.)
 	cpi	r19, 0x03
-	brne	SET_TIME____GET_BUTTON_STATE
+	brne	SET_TIME____PRINTE_CURRENT_TIME_FIELD
 	;; Enter was pressed while setting seconds... Update time and return.
 	ldi	r30, low(2*currentHour)
 	ldi	r31, high(2*currentHour)
@@ -652,6 +655,101 @@ SET_TIME____EXIT:		; Jump here if we are exiting without updating the time.
 	pop	r18
 	pop	r17
 	pop	r16
+	ret
+
+
+	;; R16 should contain a value in the range [0, 2]. A different string
+	;; will be printed for each value in the range. These strings are for
+	;; hours (0), minutes (1) and seconds (2). The behaviour of this rutine
+	;; is undefined for any values outside of the aformentioned range.
+SET_TIME_PRINT_CURRENT_TIME_FIELD:
+	push	r30
+	push	r31
+
+	call	CLEAR_LCD
+	call	CLEAR_SCROLL_STATE
+	cpi	r16, 0
+	brne	SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES
+	;; Print str for set hours...
+	ldi	r30, low(2*setTimeSetHoursStr)
+	ldi	r31, high(2*setTimeSetHoursStr)
+	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	call	UPDATE_CURRENT_MAX_LINE_LEN
+	call	WRITE_TO_LCD
+
+	;; call	SWITCH_TO_SECOND_LCD_LINE
+	;; ldi	r30, low(2*mainMenuSelectionStr)
+	;; ldi	r31, high(2*mainMenuSelectionStr)
+	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	;; call	UPDATE_CURRENT_MAX_LINE_LEN
+	;; call	WRITE_TO_LCD
+
+	
+	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
+	
+SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES:
+	cpi	r16, 1
+	brne	SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS
+	;; Print str for set minutes...
+	ldi	r30, low(2*setTimeSetMinutesStr)
+	ldi	r31, high(2*setTimeSetMinutesStr)
+	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	call	UPDATE_CURRENT_MAX_LINE_LEN
+	call	WRITE_TO_LCD
+
+;; call	SWITCH_TO_SECOND_LCD_LINE
+	;; ldi	r30, low(2*mainMenuSelectionStr)
+	;; ldi	r31, high(2*mainMenuSelectionStr)
+	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	;; call	UPDATE_CURRENT_MAX_LINE_LEN
+	;; call	WRITE_TO_LCD
+	
+	
+	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
+
+SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS:
+	;; Print str for set seconds...
+	ldi	r30, low(2*setTimeSetSecondsStr)
+	ldi	r31, high(2*setTimeSetSecondsStr)
+	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	call	UPDATE_CURRENT_MAX_LINE_LEN
+	call	WRITE_TO_LCD
+
+;; call	SWITCH_TO_SECOND_LCD_LINE
+	;; 	ldi	r30, low(2*mainMenuSelectionStr)
+	;; ldi	r31, high(2*mainMenuSelectionStr)
+	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
+	;; call	UPDATE_CURRENT_MAX_LINE_LEN
+	;; call	WRITE_TO_LCD
+	
+	
+SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
+	;; The current value for the field is displayed on the second line.
+	call	SWITCH_TO_SECOND_LCD_LINE
+
+	pop	r31
+	pop	r30
+	ret
+	
+
+	;; Returns current hours, minutes and seconds via r20, r21 and r22
+SET_TIME_GET_TIME:			; respectively.
+	push	r30
+	push	r31
+
+	;; Load current time into ret registers (r20 (h), r21 (m), r22 (s)).
+	ldi	r30, low(2*currentHour)
+	ldi	r31, high(2*currentHour)
+	ld	r20, Z		; Load current hour.
+	ldi	r30, low(2*currentMinute)
+	ldi	r31, high(2*currentMinute)
+	ld	r21, Z		; Load current minute.
+	ldi	r30, low(2*currentSecond)
+	ldi	r31, high(2*currentSecond)
+	ld	r22, Z		; Load current second.
+
+	pop	r31
+	pop	r31
 	ret
 
 
