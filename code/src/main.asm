@@ -301,7 +301,7 @@ MAIN_MENU____MENU_LOOP:
 	mov	r16, r20
 	call	ENTER_SUB_MENU
 
-	rjmp	MAIN_MENU____TO_MENU_LOOP
+	rjmp	MAIN_MENU____UPDATE_MAIN_MENU_THEN_TO_MENU_LOOP
 	
 MAIN_MENU____CHECK_UP_BUTTON:
 	mov	r18, r16	; Prior and clobbers r18.
@@ -340,6 +340,7 @@ MAIN_MENU____CHECK_IF_MENU_POS_COUNTER_CHANGED:
 	mov	r20, r19	; Update last menuPos counter.
 	mov	r16, r19	; Set up arg for UPDATE_MENU.
 
+MAIN_MENU____UPDATE_MAIN_MENU_THEN_TO_MENU_LOOP:
 	call	UPDATE_MAIN_MENU
 
 MAIN_MENU____TO_MENU_LOOP:	; We have to call SCROLL_LCD before the next loop.
@@ -561,7 +562,7 @@ SET_TIME:
 	call	SET_TIME_GET_TIME	; respectively.
 
 	ldi	r19, 0b0	; 0 for set hours str.
-SET_TIME____PRINTE_CURRENT_TIME_FIELD:
+SET_TIME____DISPLAY_CURRENT_TIME_FIELD_AND_VALUE:
 	mov	r16, r19	; R19 (SET_TIME_STATUS) tells which (h, m or s).
 	call	SET_TIME_PRINT_CURRENT_TIME_FIELD
 	
@@ -621,16 +622,17 @@ SET_TIME____CHECK_BACK_BUTTON:
 
 	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
 SET_TIME____DISPLAY_TIME_FIELDS:
+	call	DISPLAY_NUMBER
 	rjmp	SET_TIME____GET_BUTTON_STATE
 
 	;; Here we check SET_TIME_STATUS. If it is 0x03 we follow the procedure
 	;; layed our in the comment at that start of this rutine. Otherwise we
-	;; increment SET_TIME_STATUS, call SET_TIME_PRINT_CURRENT_TIME_FIELD and
-	;; loop back to SET_TIME____GET_BUTTON_STATE.
+	;; increment SET_TIME_STATUS, update the LCD to reflect SET_TIME_STATUSs
+	;; new value and read the button state again.
 SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS:
 	inc	r19		; We're updating the next time field (or exiting and updating the time.)
 	cpi	r19, 0x03
-	brne	SET_TIME____PRINTE_CURRENT_TIME_FIELD
+	brne	SET_TIME____DISPLAY_CURRENT_TIME_FIELD_AND_VALUE
 	;; Enter was pressed while setting seconds... Update time and return.
 	ldi	r30, low(2*currentHour)
 	ldi	r31, high(2*currentHour)
@@ -641,8 +643,9 @@ SET_TIME____CHECK_SET_AND_MAYBE_SET_TIME_STATUS:
 	ldi	r30, low(2*currentSecond)
 	ldi	r31, high(2*currentSecond)
 	st	Z, r22		; Set seconds.
-
-; Reset decade counters and update time in SRAM.
+	;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	;; Reset decade counters!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 SET_TIME____EXIT:		; Jump here if we are exiting without updating the time.
 	
@@ -655,6 +658,27 @@ SET_TIME____EXIT:		; Jump here if we are exiting without updating the time.
 	pop	r18
 	pop	r17
 	pop	r16
+	ret
+
+
+		;; Returns current hours, minutes and seconds via r20, r21 and r22
+SET_TIME_GET_TIME:			; respectively.
+	push	r30
+	push	r31
+
+	;; Load current time into ret registers (r20 (h), r21 (m), r22 (s)).
+	ldi	r30, low(2*currentHour)
+	ldi	r31, high(2*currentHour)
+	ld	r20, Z		; Load current hour.
+	ldi	r30, low(2*currentMinute)
+	ldi	r31, high(2*currentMinute)
+	ld	r21, Z		; Load current minute.
+	ldi	r30, low(2*currentSecond)
+	ldi	r31, high(2*currentSecond)
+	ld	r22, Z		; Load current second.
+
+	pop	r31
+	pop	r31
 	ret
 
 
@@ -676,15 +700,12 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD:
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
-
 	;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
 	;; call	WRITE_TO_LCD
-
-	
 	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
 	
 SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES:
@@ -696,15 +717,12 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES:
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
-
 ;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
 	;; call	WRITE_TO_LCD
-	
-	
 	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
 
 SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS:
@@ -714,14 +732,12 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS:
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
 	call	WRITE_TO_LCD
-
 ;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; 	ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
 	;; call	WRITE_TO_LCD
-	
 	
 SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	;; The current value for the field is displayed on the second line.
@@ -730,26 +746,12 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	pop	r31
 	pop	r30
 	ret
-	
 
-	;; Returns current hours, minutes and seconds via r20, r21 and r22
-SET_TIME_GET_TIME:			; respectively.
-	push	r30
-	push	r31
 
-	;; Load current time into ret registers (r20 (h), r21 (m), r22 (s)).
-	ldi	r30, low(2*currentHour)
-	ldi	r31, high(2*currentHour)
-	ld	r20, Z		; Load current hour.
-	ldi	r30, low(2*currentMinute)
-	ldi	r31, high(2*currentMinute)
-	ld	r21, Z		; Load current minute.
-	ldi	r30, low(2*currentSecond)
-	ldi	r31, high(2*currentSecond)
-	ld	r22, Z		; Load current second.
-
-	pop	r31
-	pop	r31
+	;; The value of r16 is output to the LCD and offset from the left by
+	;; spaces, where the number of spaces to print is taken from r17.
+	;; Then if r18 is true a string pointed to by Z is displayed.
+DISPLAY_NUMBER:	
 	ret
 
 
