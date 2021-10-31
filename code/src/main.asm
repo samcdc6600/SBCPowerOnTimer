@@ -169,17 +169,19 @@
 	;; ========================= Main Menu Strings =========================
 	helloStr:	.db "- When little worlds collide! -", 0, 0 ; Extra 0 so bytes are even.
 	helloStr2nd:	.db "- This line is longer then it should be! -", 0, 0
-	;; Main menu str's
+	;; Main menu str's.
 	mainMenuSelectionStr:	.db "~", 0 ; "~" becomes a right facing arrow!
 	mainMenuSetTimeStr:	.db "Set Time", 0 ; Item 1.
 	mainMenuSetDateStr:	.db "Set Date", 0 ; Item 2.
 	mainMenuSetActivationTimeStr:	.db "Set Activation Time", 0 ; Item 3.
 	mainMenuDeleteActivationTimeStr:	.db "Delete Activation Time", 0 ; Item 4.
 	mainMenuSetBrightnessStr:	.db "Set Brightness", 0 ; Item 5.
-	;; Set time str's
+	;; Set time str's.
 	setTimeSetHoursStr:	.db "   <Set Hour>", 0
 	setTimeSetMinutesStr:	.db "  <Set Minute>", 0
 	setTimeSetSecondsStr:	.db " <Set  Seconds>", 0
+	;; Character number offset.
+	charNumberOffset:	.db "0", 0
 
 	
 	;; =====================================================================
@@ -592,7 +594,7 @@ SET_TIME____CHECK_UP_BUTTON:
 	;; =====================================================================
 	;; UP BUTTON PRESSED (increment currently selected field.) =============
 
-	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
+	rjmp	SET_TIME____DISPLAY_TIME_FIELD
 
 SET_TIME____CHECK_DOWN_BUTTON:
 	mov	r18, r16
@@ -603,7 +605,7 @@ SET_TIME____CHECK_DOWN_BUTTON:
 	;; =====================================================================
 	;; DOWN BUTTON PRESSED (decrement currently selected field.) ===========
 
-	rjmp	SET_TIME____DISPLAY_TIME_FIELDS
+	rjmp	SET_TIME____DISPLAY_TIME_FIELD
 
 SET_TIME____CHECK_BACK_BUTTON:
 	mov	r18, r16
@@ -615,13 +617,17 @@ SET_TIME____CHECK_BACK_BUTTON:
 	;; BACK BUTTON PRESSED (decrement currently selected field.) ===========
 	
 	subi	r19, 0b01
-	brpl	SET_TIME____PRINTE_CURRENT_TIME_FIELD ; Branch if plus [if (N = 0) then PC <- PC + k + 1].
+	brpl	SET_TIME____DISPLAY_TIME_FIELD ; Branch if plus [if (N = 0) then PC <- PC + k + 1].
 	;; R19 went negative and therefore we're updating the previous field (or
 	;; exiting without updating the time.)
 	rjmp	SET_TIME____EXIT
 
 	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
-SET_TIME____DISPLAY_TIME_FIELDS:
+SET_TIME____DISPLAY_TIME_FIELD:
+	;	Temp to test displaying numer vvvvvv.
+	inc	r20		;	Temp to test displaying numer.
+	mov	r16, r20	;	Temp to test displaying numer.
+	;	Temp to test displaying numer ^^^^^^.
 	call	DISPLAY_NUMBER
 	rjmp	SET_TIME____GET_BUTTON_STATE
 
@@ -751,7 +757,115 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	;; The value of r16 is output to the LCD and offset from the left by
 	;; spaces, where the number of spaces to print is taken from r17.
 	;; Then if r18 is true a string pointed to by Z is displayed.
-DISPLAY_NUMBER:	
+DISPLAY_NUMBER:
+	push	r22
+	push	r23
+	push	r24
+	push	r25
+	push	r16
+	push	r17
+
+	clc			; Clear carry.
+	ldi	r22, 0b0		; Clear Mod10.
+	mov	r1, r16
+
+	ldi	r24, 0b00010000
+DIVIDE_LOOP:
+	ldi	r22, 0b0
+	rol	r1	; Value
+	rol	r22	; Mod10
+	mov	r23, r22
+
+	sec		; Set carry flag.
+	subi	r23, 0b1010 ; Mod10 - 10. (r22 = dividend - divisor).
+	; Branch if carry clear. (Branch if dividend < divisor).
+	brcc DISPLAY_NUMBER____IGNORE_RESULT
+	inc	r23
+	mov	r22, r23
+
+DISPLAY_NUMBER____IGNORE_RESULT:
+	dec	r24
+	brne	DIVIDE_LOOP
+
+	ldi	r25, 0b00000011
+	clc
+	adc	r22, r25
+
+
+	
+	;; ldi	r22, 0b0
+
+	;; ldi	r30,	low(2*charNumberOffset)
+	;; ldi	r31,	high(2*charNumberOffset)
+	;; ld	r16,	Z
+	
+	;; add	r22, r16
+	;; mov	r17, r22
+
+	ldi	r30,	low(2*charNumberOffset)
+	ldi	r31,	high(2*charNumberOffset)
+	lpm	r22,	Z
+	add	r22,	r16
+	mov	r16,	r22
+
+	
+	;; Output character command.
+	out	PortA, r22
+	ldi	r22, (low(registerSelectOn) | low(enable))
+	out	PortC, r22
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r22, 0b00000001
+	call	BUSY_WAIT
+	ldi	r22, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r22
+
+	mov	r22, r16
+		out	PortA, r22
+	ldi	r22, (low(registerSelectOn) | low(enable))
+	out	PortC, r22
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r22, 0b00000001
+	call	BUSY_WAIT
+	ldi	r22, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r22
+
+	mov	r22, r16
+		out	PortA, r22
+	ldi	r22, (low(registerSelectOn) | low(enable))
+	out	PortC, r22
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r22, 0b00000001
+	call	BUSY_WAIT
+	ldi	r22, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r22
+
+	mov	r22, r16
+		out	PortA, r22
+	ldi	r22, (low(registerSelectOn) | low(enable))
+	out	PortC, r22
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r22, 0b00000001
+	call	BUSY_WAIT
+	ldi	r22, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r22
+
+	mov	r22, r16
+	out	PortA, r22
+	ldi	r22, (low(registerSelectOn) | low(enable))
+	out	PortC, r22
+	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r22, 0b00000001
+	call	BUSY_WAIT
+	ldi	r22, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r22
+	
+	pop	r17
+	pop	r16
+	pop	r25
+	pop	r24
+	pop	r23
+	pop	r22
+	
 	ret
 
 
