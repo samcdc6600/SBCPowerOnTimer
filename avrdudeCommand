@@ -1,0 +1,1 @@
+sudo avrdude -p m16 -c usbasp -P /dev/ugen1.4 -U flash:w:./built/main.hex
