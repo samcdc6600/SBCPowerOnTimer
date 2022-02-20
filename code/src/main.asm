@@ -757,124 +757,80 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	;; The value of r16 and r17 taken as one number is output to
 	;; the LCD as a number.
 DISPLAY_NUMBER:
-	push	r18
-	push	r19
-	push	r22
 	push	r16
-	push	r17
+	push	r19
 	push	r20
+	push	r23
+	push	r17
+	push	r18
 	push	r21
+	push	r22
 	push	r30
 	push	r31
 
-	;; push	r22
-	;; push	r23
-	;; push	r24
-	;; push	r25
-	;; push	r16
-	;; push	r17
+	;; TMP STUFF TMP STUFFTMP STUFFTMP STUFFTMP STUFFTMP STUFFTMP STUFF
+	ldi	r17,	0b0111
+	ldi	r18,	0b0010
+	;; TMP STUFF TMP STUFFTMP STUFFTMP STUFFTMP STUFFTMP STUFFTMP STUFF
 
-;; 	clc			; Clear carry.
-;; 	ldi	r22, 0b0		; Clear Mod10.
-;; ;	mov	r1, r16
-
-;; 	ldi	r24, 0b00010000
-;; DIVIDE_LOOP:
-;; 	ldi	r22, 0b0
-;; ;	rol	r1	; Value
-;; 	rol	r22	; Mod10
-;; 	mov	r23, r22
-
-;; 	sec		; Set carry flag.
-;; 	subi	r23, 0b1010 ; Mod10 - 10. (r22 = dividend - divisor).
-;; 	; Branch if carry clear. (Branch if dividend < divisor).
-;; 	brcc DISPLAY_NUMBER____IGNORE_RESULT
-;; 	inc	r23
-;; 	mov	r22, r23
-
-;; DISPLAY_NUMBER____IGNORE_RESULT:
-;; 	dec	r24
-;; 	brne	DIVIDE_LOOP
-
-;; 	ldi	r25, 0b00000011
-;; 	clc
-;; 	adc	r22, r25
-	
-	ldi	r16,	0b0111
-	ldi	r17,	0b0
-
-	clr	r18		; Clear low byte of mod10.
-	clr	r19		; Clear high byte of mod10.
-
+DISPLAY_NUMBER____DIVIDE:
+	;; Initialise the remainder to zero.
+	clr	r19		; Clear low byte of mod10.
+	clr	r20		; Clear high byte of mod10.
 	clc			; Clear carry.
-	ldi	r22, 0b10000	; Loop counter (start at 16.)
+	
+	ldi	r23, 0b10000	; Loop counter (start at 16.)
 	
 DISPLAY_NUMBER____DIV_LOOP:	
 	;; Rotate quotient and remainder.
-	rol	r16		; AKA low byte of value.
-	rol	r17		; AKA high byte of value.
-	rol	r18		; AKA low byte of mod10.
-	rol	r19		; AKA high byte of mod10.
+	rol	r17		; AKA low byte of value.
+	rol	r18		; AKA high byte of value.
+	rol	r19		; AKA low byte of mod10.
+	rol	r20		; AKA high byte of mod10.
 
-	;;  r19:r18 = dividend - divisor.
-	mov	r20, r18	; We must save r18 and r19 for latter.
-	mov	r21, r19
+	;;  r20:r19 = dividend - divisor.
+	mov	r21, r19	; We must save r19 and r20 for latter.
+	mov	r22, r20
 	sec			; Set carry flag.
-	sbci	r20, 0b1010	; Sub with carry 10 from low byte of mod10.
-	sbci	r21, 0b0	; Sub with carry 0 from high byte of mod10.
-
+	sbci	r21, 0b1010	; Sub with carry 10 from low byte of mod10.
+	sbci	r22, 0b0	; Sub with carry 0 from high byte of mod10.
 	brcc	DISPLAY_NUMBER____IGNORE_RESULT	; Brcc (branch if carry
 					; cleared). Branch if dividend < divisor.
-	mov	r18, r20	; Clobber mod10 with new mod10.
-	mov	r19, r21
+	mov	r19, r21	; Clobber mod10 with new mod10.
+	mov	r20, r22
 
 DISPLAY_NUMBER____IGNORE_RESULT:
-	dec	r22
+	dec	r23			   ; Dec loop counter.
 	brne	DISPLAY_NUMBER____DIV_LOOP ; If(Z != 1).
 
+	rol	r17		; Rotate carry into low byte of value.
+	rol	r18		; Continue rotation into top high byte of value.
 
-	;; ldi	r22, 0b0
-
-	;; ldi	r30,	low(2*charNumberOffset)
-	;; ldi	r31,	high(2*charNumberOffset)
-	;; ld	r16,	Z
-	
-	;; add	r22, r16
-	;; mov	r17, r22
-
+	clc			; Clear carry (we may start the inner
+				; loop again if value isn't 0)
+	ldi	r30, 0b0	; Ldi doesn't set any flags.
+	adc	r19, r30	; low byte of mod10 + 0 (with carry).
+	;; Print digit of number.
 	ldi	r30, low(2*charNumberOffset)
 	ldi	r31, high(2*charNumberOffset)
 	lpm	r16, Z
-	add	r16, r18	; Add number char offset to r18.
-
+	add	r16, r19	; Add number char offset to r19.
 	call WRITE_CHAR_TO_LCD
-	
-	;; ;; Output character command.
-	;; out	PortA, r22
-	;; ldi	r22, (low(registerSelectOn) | low(enable))
-	;; out	PortC, r22
-	;; ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	;; ldi	r22, 0b00000001
-	;; call	BUSY_WAIT
-	;; ldi	r22, low(registerSelectOn)	; Clear E control signal
-	;; out	PortC, r22
-	
-	;; pop	r17
-	;; pop	r16
-	;; pop	r25
-	;; pop	r24
-	;; pop	r23
-	;; pop	r22
 
+	;; If value !=, then run outer loop once more.
+	or	r17, r18	; If either isn't 0 then the result won't be.
+	brne	DISPLAY_NUMBER____DIVIDE ; Brne (if(Z = 0) then PC <- PC + k +
+				; 1).
 	pop	r31
 	pop	r30
-	pop	r21
-	pop	r20
-	pop	r17
-	pop	r16
 	pop	r22
-	pop	r19
+	pop	r21
 	pop	r18
+	pop	r17
+	pop	r23
+	pop	r20
+	pop	r19
+	pop	r16
 	
 	ret
 
