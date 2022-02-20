@@ -624,10 +624,10 @@ SET_TIME____CHECK_BACK_BUTTON:
 
 	;; Update time fields on display and loop back to SET_TIME____GET_BUTTON_STATE.
 SET_TIME____DISPLAY_TIME_FIELD:
-	;	Temp to test displaying numer vvvvvv.
-	inc	r20		;	Temp to test displaying numer.
-	mov	r16, r20	;	Temp to test displaying numer.
-	;	Temp to test displaying numer ^^^^^^.
+	;	Temp to test displaying number vvvvvv.
+	inc	r20		;	Temp to test displaying number.
+	mov	r16, r20	;	Temp to test displaying number.
+	;	Temp to test displaying number ^^^^^^.
 	call	DISPLAY_NUMBER
 	rjmp	SET_TIME____GET_BUTTON_STATE
 
@@ -754,45 +754,85 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	ret
 
 
-	;; The value of r16 is output to the LCD and offset from the left by
-	;; spaces, where the number of spaces to print is taken from r17.
-	;; Then if r18 is true a string pointed to by Z is displayed.
+	;; The value of r16 and r17 taken as one number is output to
+	;; the LCD as a number.
 DISPLAY_NUMBER:
+	push	r18
+	push	r19
 	push	r22
-	push	r23
-	push	r24
-	push	r25
 	push	r16
 	push	r17
+	push	r20
+	push	r21
+	push	r30
+	push	r31
 
-	clc			; Clear carry.
-	ldi	r22, 0b0		; Clear Mod10.
-	mov	r1, r16
+	;; push	r22
+	;; push	r23
+	;; push	r24
+	;; push	r25
+	;; push	r16
+	;; push	r17
 
-	ldi	r24, 0b00010000
-DIVIDE_LOOP:
-	ldi	r22, 0b0
-	rol	r1	; Value
-	rol	r22	; Mod10
-	mov	r23, r22
+;; 	clc			; Clear carry.
+;; 	ldi	r22, 0b0		; Clear Mod10.
+;; ;	mov	r1, r16
 
-	sec		; Set carry flag.
-	subi	r23, 0b1010 ; Mod10 - 10. (r22 = dividend - divisor).
-	; Branch if carry clear. (Branch if dividend < divisor).
-	brcc DISPLAY_NUMBER____IGNORE_RESULT
-	inc	r23
-	mov	r22, r23
+;; 	ldi	r24, 0b00010000
+;; DIVIDE_LOOP:
+;; 	ldi	r22, 0b0
+;; ;	rol	r1	; Value
+;; 	rol	r22	; Mod10
+;; 	mov	r23, r22
 
-DISPLAY_NUMBER____IGNORE_RESULT:
-	dec	r24
-	brne	DIVIDE_LOOP
+;; 	sec		; Set carry flag.
+;; 	subi	r23, 0b1010 ; Mod10 - 10. (r22 = dividend - divisor).
+;; 	; Branch if carry clear. (Branch if dividend < divisor).
+;; 	brcc DISPLAY_NUMBER____IGNORE_RESULT
+;; 	inc	r23
+;; 	mov	r22, r23
 
-	ldi	r25, 0b00000011
-	clc
-	adc	r22, r25
+;; DISPLAY_NUMBER____IGNORE_RESULT:
+;; 	dec	r24
+;; 	brne	DIVIDE_LOOP
 
-
+;; 	ldi	r25, 0b00000011
+;; 	clc
+;; 	adc	r22, r25
 	
+		ldi	r16,	0b0111
+		ldi	r17,	0b0
+
+		clr	r18		; Clear low byte of mod10.
+		clr	r19		; Clear high byte of mod10.
+
+		clc			; Clear carry.
+		ldi	r22, 0b10000	; Loop counter (start at 16.)
+	
+	DISPLAY_NUMBER____DIV_LOOP:	
+		;; Rotate quotient and remainder.
+		rol	r16		; AKA low byte of value.
+		rol	r17		; AKA high byte of value.
+		rol	r18		; AKA low byte of mod10.
+		rol	r19		; AKA high byte of mod10.
+
+		;;  r19:r18 = dividend - divisor.
+		mov	r20, r18	; We must save r18 and r19 for latter.
+		mov	r21, r19
+		sec			; Set carry flag.
+		sbci	r20, 0b1010	; Sub with carry 10 from low byte of mod10.
+		sbci	r21, 0b0	; Sub with carry 0 from high byte of mod10.
+
+		brcc	DISPLAY_NUMBER____IGNORE_RESULT	; Brcc (branch if carry
+					; cleared). Branch if dividend < divisor.
+		mov	r18, r20	; Clobber mod10 with new mod10.
+		mov	r19, r21
+
+	DISPLAY_NUMBER____IGNORE_RESULT:
+		dec	r22
+		brne	DISPLAY_NUMBER____DIV_LOOP ; If(Z != 1).
+
+
 	;; ldi	r22, 0b0
 
 	;; ldi	r30,	low(2*charNumberOffset)
@@ -805,9 +845,12 @@ DISPLAY_NUMBER____IGNORE_RESULT:
 	ldi	r30,	low(2*charNumberOffset)
 	ldi	r31,	high(2*charNumberOffset)
 	lpm	r22,	Z
-	add	r22,	r16
-	mov	r16,	r22
+	;; add	r22,	r16
+	add	r22,	r18
+	;; mov	r16,	r22
 
+
+	;; ldi	r22, 0b11001110 ; = ho Katakana character.
 	
 	;; Output character command.
 	out	PortA, r22
@@ -818,53 +861,23 @@ DISPLAY_NUMBER____IGNORE_RESULT:
 	call	BUSY_WAIT
 	ldi	r22, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r22
-
-	mov	r22, r16
-		out	PortA, r22
-	ldi	r22, (low(registerSelectOn) | low(enable))
-	out	PortC, r22
-	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r22, 0b00000001
-	call	BUSY_WAIT
-	ldi	r22, low(registerSelectOn)	; Clear E control signal
-	out	PortC, r22
-
-	mov	r22, r16
-		out	PortA, r22
-	ldi	r22, (low(registerSelectOn) | low(enable))
-	out	PortC, r22
-	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r22, 0b00000001
-	call	BUSY_WAIT
-	ldi	r22, low(registerSelectOn)	; Clear E control signal
-	out	PortC, r22
-
-	mov	r22, r16
-		out	PortA, r22
-	ldi	r22, (low(registerSelectOn) | low(enable))
-	out	PortC, r22
-	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r22, 0b00000001
-	call	BUSY_WAIT
-	ldi	r22, low(registerSelectOn)	; Clear E control signal
-	out	PortC, r22
-
-	mov	r22, r16
-	out	PortA, r22
-	ldi	r22, (low(registerSelectOn) | low(enable))
-	out	PortC, r22
-	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r22, 0b00000001
-	call	BUSY_WAIT
-	ldi	r22, low(registerSelectOn)	; Clear E control signal
-	out	PortC, r22
 	
+	;; pop	r17
+	;; pop	r16
+	;; pop	r25
+	;; pop	r24
+	;; pop	r23
+	;; pop	r22
+
+	pop	r31
+	pop	r30
+	pop	r21
+	pop	r20
 	pop	r17
 	pop	r16
-	pop	r25
-	pop	r24
-	pop	r23
 	pop	r22
+	pop	r19
+	pop	r18
 	
 	ret
 
@@ -969,7 +982,7 @@ UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 	;; ldd r16, Y + 10
 	;; std Z + 5, r16
 	;;
-	;; and only Z can be used to indirect read the flash memory, and no pre-decrement or displacement are available :
+	;; and only Z can be used to indirect read the flash memory, and no pre-decrement or displacement are available:
 	;; lpm r16, Z+
 	;; lpm r17, Z
 	;; WRITE_TO_LCD takes two arguments that are passed via r30 and r31.
