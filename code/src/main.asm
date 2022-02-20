@@ -189,12 +189,12 @@
 MAIN:
 	;; ldi	r30, low(2*helloStr) ; Load address of string.
 	;; ldi	r31, high(2*helloStr)
-	;; call	WRITE_TO_LCD
+	;; call	WRITE_STR_TO_LCD
 	
 	;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	;; ldi	r31, high(2*helloStr2nd)
-	;; call	WRITE_TO_LCD
+	;; call	WRITE_STR_TO_LCD
 
 ;;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;;; CALL RUTINE TO SET TIME HERE. DON'T RETURN UNTIL TIME SET!!!!!!!!!!!!!!!!!!!
@@ -202,12 +202,12 @@ MAIN:
 
 	ldi	r30, low(2*helloStr) ; Load address of string.
 	ldi	r31, high(2*helloStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	call	SWITCH_TO_SECOND_LCD_LINE		;
 	ldi	r30, low(2*helloStr2nd) ; Load address of string.
 	ldi	r31, high(2*helloStr2nd)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 
 	;; ldi	r16, 0b00011111	
@@ -390,100 +390,100 @@ UPDATE_MAIN_MENU____JUMP_TABLE:
 UPDATE_MAIN_MENU____DISPLAY_ITEM_1:
 	ldi	r30, low(2*mainMenuSelectionStr) ; Current selection arrow.
 	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	ldi	r30, low(2*mainMenuSetTimeStr) ; Current selection.
 	ldi	r31, high(2*mainMenuSetTimeStr)
 	ldi	r16, mainMenuSelectionStrLen ; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN ; Update currentMaxLineLen.
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetDateStr) ; Below selection.
 	ldi	r31, high(2*mainMenuSetDateStr)
 	ldi	r16, 0		; Set arg back to 0.
 	call	UPDATE_CURRENT_MAX_LINE_LEN ; Update currentMaxLineLen.
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
 UPDATE_MAIN_MENU____DISPLAY_ITEM_2:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	ldi	r30, low(2*mainMenuSetBrightnessStr)
 	ldi	r31, high(2*mainMenuSetBrightnessStr)
 	ldi	r16, mainMenuSelectionStrLen
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetTimeStr)
 	ldi	r31, high(2*mainMenuSetTimeStr)
 	ldi	r16, 0
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
 UPDATE_MAIN_MENU____DISPLAY_ITEM_3:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
 	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
 	ldi	r16, mainMenuSelectionStrLen
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetBrightnessStr)
 	ldi	r31, high(2*mainMenuSetBrightnessStr)
 	ldi	r16, 0
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
 UPDATE_MAIN_MENU____DISPLAY_ITEM_4:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	ldi	r30, low(2*mainMenuSetActivationTimeStr)
 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
 	ldi	r16, mainMenuSelectionStrLen
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuDeleteActivationTimeStr)
 	ldi	r31, high(2*mainMenuDeleteActivationTimeStr)
 	ldi	r16, 0
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 	
 UPDATE_MAIN_MENU____DISPLAY_ITEM_5:
 	ldi	r30, low(2*mainMenuSelectionStr)
 	ldi	r31, high(2*mainMenuSelectionStr)
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	ldi	r30, low(2*mainMenuSetDateStr)
 	ldi	r31, high(2*mainMenuSetDateStr)
 	ldi	r16, mainMenuSelectionStrLen
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 
 	call	SWITCH_TO_SECOND_LCD_LINE
 	ldi	r30, low(2*mainMenuSetActivationTimeStr)
 	ldi	r31, high(2*mainMenuSetActivationTimeStr)
 	ldi	r16, 0
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	
 	rjmp	UPDATE_MAIN_MENU____EXIT_MENU_UPDATE
 
@@ -705,13 +705,13 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD:
 	ldi	r31, high(2*setTimeSetHoursStr)
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 	;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
-	;; call	WRITE_TO_LCD
+	;; call	WRITE_STR_TO_LCD
 	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
 	
 SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES:
@@ -722,13 +722,13 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_MINUTES:
 	ldi	r31, high(2*setTimeSetMinutesStr)
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 ;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
-	;; call	WRITE_TO_LCD
+	;; call	WRITE_STR_TO_LCD
 	rjmp	SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT
 
 SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS:
@@ -737,13 +737,13 @@ SET_TIME_PRINT_CURRENT_TIME_FIELD____CHECK_SECONDS:
 	ldi	r31, high(2*setTimeSetSecondsStr)
 	ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	call	UPDATE_CURRENT_MAX_LINE_LEN
-	call	WRITE_TO_LCD
+	call	WRITE_STR_TO_LCD
 ;; call	SWITCH_TO_SECOND_LCD_LINE
 	;; 	ldi	r30, low(2*mainMenuSelectionStr)
 	;; ldi	r31, high(2*mainMenuSelectionStr)
 	;; ldi	r16, 0 		; R16 is added onto the length of the string at Z.
 	;; call	UPDATE_CURRENT_MAX_LINE_LEN
-	;; call	WRITE_TO_LCD
+	;; call	WRITE_STR_TO_LCD
 	
 SET_TIME_PRINT_CURRENT_TIME_FIELD____EXIT:
 	;; The current value for the field is displayed on the second line.
@@ -800,37 +800,37 @@ DISPLAY_NUMBER:
 ;; 	clc
 ;; 	adc	r22, r25
 	
-		ldi	r16,	0b0111
-		ldi	r17,	0b0
+	ldi	r16,	0b0111
+	ldi	r17,	0b0
 
-		clr	r18		; Clear low byte of mod10.
-		clr	r19		; Clear high byte of mod10.
+	clr	r18		; Clear low byte of mod10.
+	clr	r19		; Clear high byte of mod10.
 
-		clc			; Clear carry.
-		ldi	r22, 0b10000	; Loop counter (start at 16.)
+	clc			; Clear carry.
+	ldi	r22, 0b10000	; Loop counter (start at 16.)
 	
-	DISPLAY_NUMBER____DIV_LOOP:	
-		;; Rotate quotient and remainder.
-		rol	r16		; AKA low byte of value.
-		rol	r17		; AKA high byte of value.
-		rol	r18		; AKA low byte of mod10.
-		rol	r19		; AKA high byte of mod10.
+DISPLAY_NUMBER____DIV_LOOP:	
+	;; Rotate quotient and remainder.
+	rol	r16		; AKA low byte of value.
+	rol	r17		; AKA high byte of value.
+	rol	r18		; AKA low byte of mod10.
+	rol	r19		; AKA high byte of mod10.
 
-		;;  r19:r18 = dividend - divisor.
-		mov	r20, r18	; We must save r18 and r19 for latter.
-		mov	r21, r19
-		sec			; Set carry flag.
-		sbci	r20, 0b1010	; Sub with carry 10 from low byte of mod10.
-		sbci	r21, 0b0	; Sub with carry 0 from high byte of mod10.
+	;;  r19:r18 = dividend - divisor.
+	mov	r20, r18	; We must save r18 and r19 for latter.
+	mov	r21, r19
+	sec			; Set carry flag.
+	sbci	r20, 0b1010	; Sub with carry 10 from low byte of mod10.
+	sbci	r21, 0b0	; Sub with carry 0 from high byte of mod10.
 
-		brcc	DISPLAY_NUMBER____IGNORE_RESULT	; Brcc (branch if carry
+	brcc	DISPLAY_NUMBER____IGNORE_RESULT	; Brcc (branch if carry
 					; cleared). Branch if dividend < divisor.
-		mov	r18, r20	; Clobber mod10 with new mod10.
-		mov	r19, r21
+	mov	r18, r20	; Clobber mod10 with new mod10.
+	mov	r19, r21
 
-	DISPLAY_NUMBER____IGNORE_RESULT:
-		dec	r22
-		brne	DISPLAY_NUMBER____DIV_LOOP ; If(Z != 1).
+DISPLAY_NUMBER____IGNORE_RESULT:
+	dec	r22
+	brne	DISPLAY_NUMBER____DIV_LOOP ; If(Z != 1).
 
 
 	;; ldi	r22, 0b0
@@ -842,25 +842,22 @@ DISPLAY_NUMBER:
 	;; add	r22, r16
 	;; mov	r17, r22
 
-	ldi	r30,	low(2*charNumberOffset)
-	ldi	r31,	high(2*charNumberOffset)
-	lpm	r22,	Z
-	;; add	r22,	r16
-	add	r22,	r18
-	;; mov	r16,	r22
+	ldi	r30, low(2*charNumberOffset)
+	ldi	r31, high(2*charNumberOffset)
+	lpm	r16, Z
+	add	r16, r18	; Add number char offset to r18.
 
-
-	;; ldi	r22, 0b11001110 ; = ho Katakana character.
+	call WRITE_CHAR_TO_LCD
 	
-	;; Output character command.
-	out	PortA, r22
-	ldi	r22, (low(registerSelectOn) | low(enable))
-	out	PortC, r22
-	ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
-	ldi	r22, 0b00000001
-	call	BUSY_WAIT
-	ldi	r22, low(registerSelectOn)	; Clear E control signal
-	out	PortC, r22
+	;; ;; Output character command.
+	;; out	PortA, r22
+	;; ldi	r22, (low(registerSelectOn) | low(enable))
+	;; out	PortC, r22
+	;; ldi	r17, 0b00000001	; Set up args for BUSY_WAIT
+	;; ldi	r22, 0b00000001
+	;; call	BUSY_WAIT
+	;; ldi	r22, low(registerSelectOn)	; Clear E control signal
+	;; out	PortC, r22
 	
 	;; pop	r17
 	;; pop	r16
@@ -969,6 +966,29 @@ UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 	ret
 
 
+	;; WRITE_CHAR_TO_LCD takes one arg passed via r16 and writes it to the
+	;; display. It doesn't do anything to r16, just sends the value it
+	;; contains to the display.
+WRITE_CHAR_TO_LCD:
+	push	r16
+	push	r17
+	
+	;; Output character command.
+	out	PortA, r16
+	ldi	r16, (low(registerSelectOn) | low(enable))
+	out	PortC, r16
+	ldi	r16, 0b00000001	; Set up args for BUSY_WAIT
+	ldi	r17, 0b00000001
+	call	BUSY_WAIT
+	ldi	r16, low(registerSelectOn)	; Clear E control signal
+	out	PortC, r16
+
+	pop	r17
+	pop	r16
+	
+	ret
+
+
 	;; https://stackoverflow.com/questions/48645379/avr-xyz-registers
 	;; X Y and Z registers are actually pairs of r27:r26, r29:r28 and
 	;; r31:r30 registers. Each of them can be used as indirect pointers to SRAM:
@@ -985,22 +1005,22 @@ UPDATE_CURRENT_MAX_LINE_LEN____EXIT:
 	;; and only Z can be used to indirect read the flash memory, and no pre-decrement or displacement are available:
 	;; lpm r16, Z+
 	;; lpm r17, Z
-	;; WRITE_TO_LCD takes two arguments that are passed via r30 and r31.
+	;; WRITE_STR_TO_LCD takes two arguments that are passed via r30 and r31.
 	;; They are respectively the low and high bytes of the string address
-WRITE_TO_LCD:
+WRITE_STR_TO_LCD:
 	push	r16
 	push	r17
 	push	r18		; Used to count str len, where str is pointed to by Z.
 	
 	clr	r18
-WRITE_TO_LCD____START_WRITE_TO_LCD:
+WRITE_STR_TO_LCD____START_WRITE_STR_TO_LCD:
 	lpm	r16, Z+		; Load from flash.
 	inc	r18
 ;	ldi	r17, 0b0
 	cpi	r16, FALSE		; Have we hit the null byte?
-	breq    WRITE_TO_LCD____END_WRITE_TO_LCD
+	breq    WRITE_STR_TO_LCD____END_WRITE_STR_TO_LCD
 	cpi	r18, halfDDRAMSize	; Have we reached the end of the display ram for this line.
-	brge	WRITE_TO_LCD____END_WRITE_TO_LCD
+	brge	WRITE_STR_TO_LCD____END_WRITE_STR_TO_LCD
 	;; Output character command.
 	out	PortA, r16
 	ldi	r16, (low(registerSelectOn) | low(enable))
@@ -1010,8 +1030,8 @@ WRITE_TO_LCD____START_WRITE_TO_LCD:
 	call	BUSY_WAIT
 	ldi	r16, low(registerSelectOn)	; Clear E control signal
 	out	PortC, r16
-	rjmp	WRITE_TO_LCD____START_WRITE_TO_LCD
-WRITE_TO_LCD____END_WRITE_TO_LCD:
+	rjmp	WRITE_STR_TO_LCD____START_WRITE_STR_TO_LCD
+WRITE_STR_TO_LCD____END_WRITE_STR_TO_LCD:
 	
 	pop	r18
 	pop	r17
@@ -1165,7 +1185,7 @@ CLEAR_LCD:
 	out	PortC, r16
 	;; We need to wait a while before we can write to the LCD again (we wait
 	;; here since we anticipate that we will almost exclusivly be calling
-	;; this rutine before WRITE_TO_LCD and because it simplifies the code.)
+	;; this rutine before WRITE_STR_TO_LCD and because it simplifies the code.)
 	ldi	r17, 0b0000111
 	ldi	r16, 0b0000111
 	call	BUSY_WAIT
